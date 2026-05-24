@@ -65,6 +65,57 @@ export interface ManagerBudget {
   updated_at: string
 }
 
+export type ChallengeStatus = 'draft' | 'active' | 'ended'
+
+export interface Challenge {
+  id: string
+  organization_id: string
+  title: string
+  description: string
+  start_date: string | null
+  due_date: string | null
+  status: ChallengeStatus
+  token_budget: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChallengeTier {
+  id: string
+  challenge_id: string
+  level: number
+  label: string
+  is_individual: boolean
+  enabled: boolean
+  threshold_pct: number | null
+  base_tokens: number
+  bonus_tokens: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ChallengeCompletion {
+  id: string
+  challenge_id: string
+  employee_id: string
+  completed_at: string
+}
+
+export interface ChallengeWithTiers extends Challenge {
+  tiers: ChallengeTier[]
+}
+
+export interface TierDraft {
+  level: number
+  label: string
+  is_individual: boolean
+  enabled: boolean
+  threshold_pct: number
+  base_tokens: number
+  bonus_tokens: number
+}
+
 export interface EmployeeAllocation {
   id: string
   organization_id: string

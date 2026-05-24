@@ -11,7 +11,10 @@ import EmployeeModal from './EmployeeModal'
 import OrgChartView from './OrgChartView'
 import LevelConfigPanel from './LevelConfigPanel'
 import BudgetTab from './BudgetTab'
-import type { Organization, Employee, OrgLevelConfig, EmployeeNode, ManagerBudget } from '@/lib/types'
+import ChallengesTab from './ChallengesTab'
+import SimulatorTab from './SimulatorTab'
+import { Trophy, FlaskConical } from 'lucide-react'
+import type { Organization, Employee, OrgLevelConfig, EmployeeNode, ManagerBudget, ChallengeWithTiers } from '@/lib/types'
 
 interface Props {
   organization: Organization
@@ -20,6 +23,8 @@ interface Props {
   orgId: string
   totalBudget: number | null
   initialManagerBudgets: ManagerBudget[]
+  initialChallenges: ChallengeWithTiers[]
+  initialCompletions: any[]
 }
 
 const LEVEL_COLORS = [
@@ -497,6 +502,8 @@ export default function OrgManager({
   orgId,
   totalBudget,
   initialManagerBudgets,
+  initialChallenges,
+  initialCompletions,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -509,7 +516,7 @@ export default function OrgManager({
   )
   const [search, setSearch] = useState('')
 
-  const [activeView, setActiveView] = useState<'list' | 'chart' | 'budget'>('list')
+  const [activeView, setActiveView] = useState<'list' | 'chart' | 'budget' | 'challenges' | 'simulator'>('list')
 
   // Modal state
   const [addModal, setAddModal] = useState<{ managerId?: string; defaultLevel?: number } | null>(null)
@@ -756,6 +763,26 @@ export default function OrgManager({
               >
                 <Coins size={12} /> Budget
               </button>
+              <button
+                onClick={() => setActiveView('challenges')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  activeView === 'challenges'
+                    ? 'bg-white shadow text-gray-900'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <Trophy size={12} /> Challenges
+              </button>
+              <button
+                onClick={() => setActiveView('simulator')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  activeView === 'simulator'
+                    ? 'bg-white shadow text-violet-700'
+                    : 'text-gray-400 hover:text-violet-500'
+                }`}
+              >
+                <FlaskConical size={12} /> Simulator
+              </button>
             </div>
 
             {activeView === 'list' && (
@@ -764,14 +791,40 @@ export default function OrgManager({
                 <button onClick={collapseAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Collapse</button>
               </>
             )}
-            <button
-              onClick={() => { setAddModal({}); setModalError(null) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
-            >
-              <Plus size={12} /> Add Employee
-            </button>
+            {(activeView === 'list' || activeView === 'chart') && (
+              <button
+                onClick={() => { setAddModal({}); setModalError(null) }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+              >
+                <Plus size={12} /> Add Employee
+              </button>
+            )}
           </div>
         </div>
+
+        {/* ── Challenges view ── */}
+        {activeView === 'challenges' && (
+          <ChallengesTab
+            orgId={orgId}
+            employees={employees}
+            levelConfigs={effectiveLevelConfigs}
+            totalBudget={totalBudget}
+            initialChallenges={initialChallenges}
+            initialManagerBudgets={initialManagerBudgets}
+            initialCompletions={initialCompletions}
+          />
+        )}
+
+        {/* ── Simulator view (tenant admin only) ── */}
+        {activeView === 'simulator' && (
+          <SimulatorTab
+            orgId={orgId}
+            challenges={initialChallenges}
+            employees={employees}
+            levelConfigs={effectiveLevelConfigs}
+            initialCompletions={initialCompletions}
+          />
+        )}
 
         {/* ── Budget view ── */}
         {activeView === 'budget' && (
