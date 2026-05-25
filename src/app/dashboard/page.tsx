@@ -33,11 +33,32 @@ export default async function DashboardPage({
 
     const orgSummaries = await Promise.all(
       orgList.map(async org => {
-        const [{ count: employeeCount }, { count: levelCount }] = await Promise.all([
+        const [
+          { count: employeeCount },
+          { count: levelCount },
+          { count: challengeCount },
+          { count: activeChallengeCount },
+          { data: orgBudget },
+          { data: managerBudgets },
+        ] = await Promise.all([
           supabase.from('employees').select('id', { count: 'exact', head: true }).eq('organization_id', org.id),
           supabase.from('org_level_configs').select('id', { count: 'exact', head: true }).eq('organization_id', org.id),
+          supabase.from('challenges').select('id', { count: 'exact', head: true }).eq('organization_id', org.id),
+          supabase.from('challenges').select('id', { count: 'exact', head: true }).eq('organization_id', org.id).eq('status', 'active'),
+          supabase.from('org_budgets').select('total_tokens').eq('organization_id', org.id).single(),
+          supabase.from('manager_budgets').select('tokens').eq('organization_id', org.id),
         ])
-        return { org, employeeCount: employeeCount ?? 0, levelCount: levelCount ?? 0 }
+        const totalBudget = orgBudget?.total_tokens ?? null
+        const allocatedTokens = (managerBudgets ?? []).reduce((s, b) => s + b.tokens, 0)
+        return {
+          org,
+          employeeCount: employeeCount ?? 0,
+          levelCount: levelCount ?? 0,
+          challengeCount: challengeCount ?? 0,
+          activeChallengeCount: activeChallengeCount ?? 0,
+          totalBudget,
+          allocatedTokens,
+        }
       })
     )
 

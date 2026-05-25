@@ -40,7 +40,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   )
 }
 
-// ─── Worst-case computation (shared with server) ──────────────────────────────
+// ─── Total payout computation ─────────────────────────────────────────────────
 function computeWorstCase(tiers: TierDraft[], totalEmployees: number): number {
   const base = tiers.find(t => t.is_individual)?.base_tokens ?? 0
   const groupBonus = tiers
@@ -169,42 +169,44 @@ export default function CreateChallengeSheet({
   const sortedTiers = [...tiers].sort((a, b) => a.level - b.level)
 
   return (
-    <div className="absolute inset-y-0 right-0 w-[460px] bg-white border-l border-gray-100 shadow-2xl z-20 flex flex-col">
+    <div className="flex flex-col flex-1 overflow-hidden bg-gray-50">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
-            <Trophy size={14} className="text-indigo-600" />
+      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-6 py-4">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <Trophy size={15} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">New Challenge</p>
+              <p className="text-[11px] text-gray-400">Step {stepIndex + 1} of {STEPS.length}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-bold text-gray-900">New Challenge</p>
-            <p className="text-[11px] text-gray-400">Step {stepIndex + 1} of {STEPS.length}</p>
+          {/* Step pills */}
+          <div className="flex items-center gap-2">
+            {STEPS.map((s, i) => (
+              <div key={s} className="flex items-center gap-2">
+                <StepPill
+                  label={STEP_LABELS[s]}
+                  state={s === step ? 'active' : i < stepIndex ? 'done' : 'upcoming'}
+                />
+                {i < STEPS.length - 1 && <ChevronRight size={12} className="text-gray-300" />}
+              </div>
+            ))}
           </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* Step pills */}
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-50 flex-shrink-0">
-        {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <StepPill
-              label={STEP_LABELS[s]}
-              state={s === step ? 'active' : i < stepIndex ? 'done' : 'upcoming'}
-            />
-            {i < STEPS.length - 1 && <ChevronRight size={12} className="text-gray-300" />}
-          </div>
-        ))}
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 overflow-y-auto py-8">
+        <div className="max-w-2xl mx-auto px-6 space-y-0">
 
         {/* ── BASICS ── */}
         {step === 'basics' && (
@@ -359,7 +361,7 @@ export default function CreateChallengeSheet({
 
             {/* Live worst-case preview */}
             <div className={`rounded-2xl border px-4 py-3 mt-2 ${isOverBudget ? 'border-red-200 bg-red-50' : 'border-indigo-100 bg-indigo-50'}`}>
-              <p className="text-xs font-bold text-gray-700 mb-2">Worst-case token cost</p>
+              <p className="text-xs font-bold text-gray-700 mb-2">Total token cost</p>
               <div className="flex items-baseline gap-1.5">
                 <span className={`text-2xl font-black tabular-nums ${isOverBudget ? 'text-red-600' : 'text-indigo-700'}`}>
                   {fmt(worstCase)}
@@ -446,7 +448,7 @@ export default function CreateChallengeSheet({
               <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">Token Budget</p>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Worst-case payout</span>
+                  <span className="text-gray-500">Total payout</span>
                   <span className="font-bold text-gray-900 tabular-nums">{fmt(worstCase)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -470,52 +472,71 @@ export default function CreateChallengeSheet({
             </div>
           </div>
         )}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="mx-5 mb-0 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2.5 flex-shrink-0">
-          <AlertCircle size={13} /> {error}
-        </div>
-      )}
+        </div>{/* end max-w-2xl */}
+      </div>{/* end scrollable */}
 
       {/* Footer */}
-      <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex gap-2">
-        {stepIndex > 0 ? (
-          <button
-            onClick={goBack}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            Back
-          </button>
-        ) : (
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-        )}
+      <div className="flex-shrink-0 bg-white border-t border-gray-100 px-6 py-4">
+        <div className="max-w-2xl mx-auto flex gap-3">
 
-        {step !== 'review' ? (
-          <button
-            onClick={goNext}
-            disabled={step === 'basics' && !basicsValid}
-            className="flex-1 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Next →
-          </button>
-        ) : (
-          <button
-            onClick={handleCreate}
-            disabled={saving || isOverBudget}
-            className="flex-1 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {saving
-              ? <><Loader2 size={14} className="animate-spin" /> Creating…</>
-              : <><Trophy size={14} /> Create Challenge</>}
-          </button>
-        )}
+          {/* Error inline above buttons */}
+          {error && (
+            <div className="flex-1 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-3 py-2.5">
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+
+          {!error && (
+            <>
+              {stepIndex > 0 ? (
+                <button
+                  onClick={goBack}
+                  className="px-6 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Back
+                </button>
+              ) : (
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+
+              <div className="flex-1" />
+
+              {step !== 'review' ? (
+                <button
+                  onClick={goNext}
+                  disabled={step === 'basics' && !basicsValid}
+                  className="px-8 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreate}
+                  disabled={saving || isOverBudget}
+                  className="px-8 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {saving
+                    ? <><Loader2 size={14} className="animate-spin" /> Creating…</>
+                    : <><Trophy size={14} /> Create Challenge</>}
+                </button>
+              )}
+            </>
+          )}
+
+          {error && (
+            <button
+              onClick={() => setError(null)}
+              className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

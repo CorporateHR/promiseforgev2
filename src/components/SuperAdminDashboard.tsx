@@ -3,13 +3,22 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createOrganizationAsSuperAdmin } from '@/app/actions/org'
-import { Building2, Users, Layers, Plus, X, Loader2 } from 'lucide-react'
+import {
+  Building2, Users, Layers, Plus, X, Loader2,
+  Trophy, Coins, ChevronRight,
+} from 'lucide-react'
 import type { Organization } from '@/lib/types'
+
+function fmt(n: number) { return n.toLocaleString() }
 
 interface OrgSummary {
   org: Organization
   employeeCount: number
   levelCount: number
+  challengeCount: number
+  activeChallengeCount: number
+  totalBudget: number | null
+  allocatedTokens: number
 }
 
 // ─── Create Org Modal ─────────────────────────────────────────────────────────
@@ -28,7 +37,15 @@ function CreateOrgModal({ onCreated, onClose }: {
     setLoading(true)
     const result = await createOrganizationAsSuperAdmin(name, description)
     if (result.error) { setError(result.error); setLoading(false); return }
-    onCreated({ org: result.org!, employeeCount: 0, levelCount: 3 })
+    onCreated({
+      org: result.org!,
+      employeeCount: 0,
+      levelCount: 3,
+      challengeCount: 0,
+      activeChallengeCount: 0,
+      totalBudget: null,
+      allocatedTokens: 0,
+    })
     onClose()
   }
 
@@ -84,6 +101,96 @@ function CreateOrgModal({ onCreated, onClose }: {
   )
 }
 
+// ─── Org card ─────────────────────────────────────────────────────────────────
+function OrgCard({ summary, onClick }: { summary: OrgSummary; onClick: () => void }) {
+  const { org, employeeCount, levelCount, challengeCount, activeChallengeCount, totalBudget, allocatedTokens } = summary
+  const remaining = totalBudget !== null ? totalBudget - allocatedTokens : null
+  const usedPct = totalBudget && totalBudget > 0 ? Math.min(100, (allocatedTokens / totalBudget) * 100) : 0
+  const isOver = remaining !== null && remaining < 0
+
+  return (
+    <button
+      onClick={onClick}
+      className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group overflow-hidden"
+    >
+      {/* Colour accent */}
+      <div className="h-1 w-full bg-indigo-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+
+      <div className="p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+            {org.name[0].toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 truncate group-hover:text-indigo-700 transition-colors text-sm">
+              {org.name}
+            </p>
+            {org.description && (
+              <p className="text-xs text-gray-400 truncate mt-0.5">{org.description}</p>
+            )}
+          </div>
+          <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-400 transition-colors flex-shrink-0 mt-1" />
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-gray-50 rounded-xl p-2.5">
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 mb-1">
+              <Users size={9} /> People
+            </div>
+            <p className="text-sm font-black text-gray-900 tabular-nums">{fmt(employeeCount)}</p>
+            <p className="text-[10px] text-gray-400">{levelCount} levels</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-2.5">
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 mb-1">
+              <Trophy size={9} /> Challenges
+            </div>
+            <p className="text-sm font-black text-gray-900 tabular-nums">{fmt(challengeCount)}</p>
+            <p className="text-[10px] text-emerald-600 font-semibold">{activeChallengeCount} active</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-2.5">
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 mb-1">
+              <Coins size={9} /> Budget
+            </div>
+            {totalBudget !== null ? (
+              <>
+                <p className="text-sm font-black text-gray-900 tabular-nums">{fmt(totalBudget)}</p>
+                <p className={`text-[10px] font-semibold ${isOver ? 'text-red-500' : 'text-gray-400'}`}>
+                  {fmt(allocatedTokens)} alloc.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black text-gray-300">—</p>
+                <p className="text-[10px] text-gray-300">not set</p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Budget progress bar */}
+        {totalBudget !== null && totalBudget > 0 && (
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[10px] text-gray-400">{usedPct.toFixed(0)}% allocated</span>
+              <span className={`text-[10px] font-bold ${isOver ? 'text-red-500' : 'text-emerald-600'}`}>
+                {remaining !== null ? `${fmt(Math.abs(remaining))} ${isOver ? 'over' : 'free'}` : ''}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${isOver ? 'bg-red-400' : usedPct >= 80 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                style={{ width: `${usedPct}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </button>
+  )
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SuperAdminDashboard({ orgs: initialOrgs }: { orgs: OrgSummary[] }) {
   const router = useRouter()
@@ -112,53 +219,29 @@ export default function SuperAdminDashboard({ orgs: initialOrgs }: { orgs: OrgSu
 
       {/* Org grid */}
       <div className="max-w-6xl mx-auto px-8 py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {orgs.map(({ org, employeeCount, levelCount }) => (
-            <button
-              key={org.id}
-              onClick={() => router.push(`/dashboard/org/${org.id}`)}
-              className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
-                  {org.name[0].toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <div className="font-bold text-gray-900 truncate group-hover:text-indigo-700 transition-colors">
-                    {org.name}
-                  </div>
-                  {org.description && (
-                    <div className="text-xs text-gray-400 truncate">{org.description}</div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
-                <div className="flex items-center gap-1.5">
-                  <Users size={13} className="text-gray-400" />
-                  <span>{employeeCount} people</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Layers size={13} className="text-gray-400" />
-                  <span>{levelCount} levels</span>
-                </div>
-              </div>
-            </button>
-          ))}
-
-          {/* Add org card */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-white/60 rounded-2xl border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-white transition-all p-5 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-indigo-500 min-h-[120px]"
-          >
-            <Plus size={22} />
-            <span className="text-sm font-semibold">Add Organization</span>
-          </button>
-        </div>
-
-        {orgs.length === 0 && (
+        {orgs.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Building2 size={40} className="mx-auto mb-3 text-gray-200" />
             <p className="text-sm">No organizations yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {orgs.map(summary => (
+              <OrgCard
+                key={summary.org.id}
+                summary={summary}
+                onClick={() => router.push(`/dashboard/org/${summary.org.id}`)}
+              />
+            ))}
+
+            {/* Add org card */}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-white/60 rounded-2xl border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-white transition-all p-5 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-indigo-500 min-h-[200px]"
+            >
+              <Plus size={22} />
+              <span className="text-sm font-semibold">Add Organization</span>
+            </button>
           </div>
         )}
       </div>

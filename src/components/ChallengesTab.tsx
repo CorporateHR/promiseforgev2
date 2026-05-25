@@ -289,68 +289,67 @@ export default function ChallengesTab({
   const draft  = challenges.filter(c => c.status === 'draft').length
 
   return (
-    <div className="flex flex-col h-full overflow-hidden relative">
+    <div className="flex flex-col flex-1 overflow-hidden relative">
 
-      {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100">
-        <div>
-          <p className="text-sm font-bold text-gray-900">Challenges</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            {active} active · {draft} draft · {challenges.length} total
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {totalBudget !== null && (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg">
-              <Coins size={12} className="text-amber-500" />
-              {fmt(availableTokens)} available
-            </div>
-          )}
-          <button
-            onClick={() => setSheetOpen(true)}
-            className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
-          >
-            <Plus size={14} /> New Challenge
-          </button>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {challenges.length === 0 ? (
-          <EmptyState onNew={() => setSheetOpen(true)} />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 max-w-3xl mx-auto">
-            {challenges.map(c => (
-              <ChallengeCard
-                key={c.id}
-                challenge={c}
-                completedCount={completionMap.get(c.id)?.size ?? 0}
-                totalEmployees={employees.length}
-                onAction={action => handleAction(c, action)}
-                loading={actionLoading === c.id}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Create sheet */}
-      {sheetOpen && (
+      {/* ── Challenge list (hidden when creating) ── */}
+      {!sheetOpen && (
         <>
-          <div
-            className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-10"
-            onClick={() => setSheetOpen(false)}
-          />
-          <CreateChallengeSheet
-            orgId={orgId}
-            levelConfigs={levelConfigs}
-            totalEmployees={employees.length}
-            availableTokens={availableTokens}
-            onCreated={handleCreated}
-            onClose={() => setSheetOpen(false)}
-          />
+          {/* Toolbar */}
+          <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Challenges</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {active} active · {draft} draft · {challenges.length} total
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {totalBudget !== null && (
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg">
+                  <Coins size={12} className="text-amber-500" />
+                  {fmt(availableTokens)} available
+                </div>
+              )}
+              <button
+                onClick={() => setSheetOpen(true)}
+                className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
+              >
+                <Plus size={14} /> New Challenge
+              </button>
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {challenges.length === 0 ? (
+              <EmptyState onNew={() => setSheetOpen(true)} />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 max-w-3xl mx-auto">
+                {challenges.map(c => (
+                  <ChallengeCard
+                    key={c.id}
+                    challenge={c}
+                    completedCount={completionMap.get(c.id)?.size ?? 0}
+                    totalEmployees={employees.length}
+                    onAction={action => handleAction(c, action)}
+                    loading={actionLoading === c.id}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </>
+      )}
+
+      {/* ── Full-page create form ── */}
+      {sheetOpen && (
+        <CreateChallengeSheet
+          orgId={orgId}
+          levelConfigs={levelConfigs}
+          totalEmployees={employees.length}
+          availableTokens={availableTokens}
+          onCreated={handleCreated}
+          onClose={() => setSheetOpen(false)}
+        />
       )}
 
       {/* Detail sheet */}

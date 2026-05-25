@@ -18,13 +18,23 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ orgI
     { data: levelConfigs },
     { data: tenantAdminEmails },
     { data: orgBudget },
+    { data: challenges },
+    { data: managerBudgets },
   ] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', orgId).single(),
     supabase.from('employees').select('*').eq('organization_id', orgId).order('level').order('full_name'),
     supabase.from('org_level_configs').select('*').eq('organization_id', orgId).order('level'),
     supabase.rpc('get_tenant_admin_emails', { p_org_id: orgId }),
     supabase.from('org_budgets').select('total_tokens').eq('organization_id', orgId).single(),
+    supabase.from('challenges').select('id, title, status, token_budget, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }),
+    supabase.from('manager_budgets').select('manager_id, tokens').eq('organization_id', orgId),
   ])
+
+  const challengeIds = (challenges ?? []).map((c: { id: string }) => c.id)
+  const { data: completions } = await supabase
+    .from('challenge_completions')
+    .select('challenge_id, employee_id')
+    .in('challenge_id', challengeIds.length > 0 ? challengeIds : ['00000000-0000-0000-0000-000000000000'])
 
   if (!org) redirect('/dashboard')
 
@@ -35,6 +45,9 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ orgI
       initialLevelConfigs={levelConfigs ?? []}
       initialTenantAdminEmails={tenantAdminEmails ?? []}
       initialBudget={orgBudget?.total_tokens ?? null}
+      initialChallenges={(challenges ?? []) as any[]}
+      initialManagerBudgets={managerBudgets ?? []}
+      initialCompletions={completions ?? []}
     />
   )
 }

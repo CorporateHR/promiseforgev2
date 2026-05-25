@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import {
   ArrowLeft, CheckCircle2, Bell, Loader2, BellRing,
-  AlertCircle, Users, Zap,
+  AlertCircle, Users, Zap, ChevronDown, ChevronRight, Search, X,
 } from 'lucide-react'
 import {
   adminMarkGroupCompletion,
@@ -89,7 +89,7 @@ function CompletionDot({
 
 // ─── Individual employee row ──────────────────────────────────────────────────
 function EmployeeRow({
-  emp, completedIds, isActive, loadingMap, onMark, onNudge,
+  emp, completedIds, isActive, loadingMap, onMark, onNudge, searchQuery,
 }: {
   emp: Employee
   completedIds: Set<string>
@@ -97,14 +97,31 @@ function EmployeeRow({
   loadingMap: Record<string, 'marking' | 'nudging' | null>
   onMark: (id: string, ids: string[]) => void
   onNudge: (id: string, ids: string[]) => void
+  searchQuery?: string
 }) {
   const done = completedIds.has(emp.id)
   const loading = loadingMap[emp.id] ?? null
+  const isMatch = !searchQuery || emp.full_name.toLowerCase().includes(searchQuery.toLowerCase())
+
+  // Highlight matching portion of name
+  function HighlightedName() {
+    if (!searchQuery || !isMatch) return <span>{emp.full_name}</span>
+    const q = searchQuery.toLowerCase()
+    const idx = emp.full_name.toLowerCase().indexOf(q)
+    if (idx === -1) return <span>{emp.full_name}</span>
+    return (
+      <span>
+        {emp.full_name.slice(0, idx)}
+        <mark className="bg-amber-200 text-gray-900 rounded px-0.5">{emp.full_name.slice(idx, idx + q.length)}</mark>
+        {emp.full_name.slice(idx + q.length)}
+      </span>
+    )
+  }
 
   return (
     <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
       done ? 'bg-emerald-50/60' : 'hover:bg-gray-50'
-    }`}>
+    } ${searchQuery && !isMatch ? 'opacity-30' : ''}`}>
       {/* Clickable completion dot */}
       <CompletionDot
         empId={emp.id}
@@ -117,7 +134,7 @@ function EmployeeRow({
 
       {/* Name */}
       <span className={`flex-1 text-sm ${done ? 'text-gray-400 line-through' : 'text-gray-800 font-medium'}`}>
-        {emp.full_name}
+        <HighlightedName />
       </span>
 
       {/* Nudge button (only for pending + active) */}
@@ -204,7 +221,8 @@ function GroupActions({
 
 // ─── Leaf group card (L3 and below — shows individual rows) ──────────────────
 function LeafGroupCard({
-  node, tierBonus, thresholdPct, completedIds, isActive, loadingMap, levelConfigs, onMark, onNudge,
+  node, tierBonus, thresholdPct, completedIds, isActive, loadingMap, levelConfigs,
+  onMark, onNudge, expanded, onToggle, searchQuery,
 }: {
   node: EmployeeNode
   tierBonus: number
@@ -215,6 +233,9 @@ function LeafGroupCard({
   levelConfigs: OrgLevelConfig[]
   onMark: (id: string, ids: string[]) => void
   onNudge: (id: string, ids: string[]) => void
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  searchQuery?: string
 }) {
   const subtree = flatSubtree(node)
   const subtreeIds = subtree.map(e => e.id)
@@ -222,11 +243,13 @@ function LeafGroupCard({
   const totalCount = subtreeIds.length
   const thresholdCount = Math.ceil(totalCount * thresholdPct / 100)
   const levelLabel = levelConfigs.find(c => c.level === node.level)?.label ?? `L${node.level}`
+  const isExpanded = expanded.has(node.id)
+  const members = subtree.filter(emp => emp.id !== node.id)
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Card header */}
-      <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+      <div className="px-3 py-2.5 flex items-center gap-2 flex-wrap">
         <CompletionDot
           empId={node.id}
           loadingKey={node.id + ':self'}
@@ -236,7 +259,15 @@ function LeafGroupCard({
           onMark={onMark}
           size="sm"
         />
-        <span className="font-bold text-sm text-gray-900 flex-shrink-0">{node.full_name}</span>
+        <button
+          onClick={() => onToggle(node.id)}
+          className="flex items-center gap-1.5 min-w-0 hover:opacity-70 transition-opacity"
+        >
+          {isExpanded
+            ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+            : <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />}
+          <span className="font-bold text-sm text-gray-900 truncate">{node.full_name}</span>
+        </button>
         <span
           className="text-[9px] font-black text-white px-1.5 py-0.5 rounded flex-shrink-0"
           style={{ background: levelColor(node.level) }}
@@ -261,26 +292,30 @@ function LeafGroupCard({
       </div>
 
       {/* Individual rows — skip the group leader (already shown in header) */}
-      <div className="p-1.5 space-y-0.5">
-        {subtree.filter(emp => emp.id !== node.id).map(emp => (
-          <EmployeeRow
-            key={emp.id}
-            emp={emp}
-            completedIds={completedIds}
-            isActive={isActive}
-            loadingMap={loadingMap}
-            onMark={onMark}
-            onNudge={onNudge}
-          />
-        ))}
-      </div>
+      {isExpanded && members.length > 0 && (
+        <div className="border-t border-gray-100 p-1.5 space-y-0.5">
+          {members.map(emp => (
+            <EmployeeRow
+              key={emp.id}
+              emp={emp}
+              completedIds={completedIds}
+              isActive={isActive}
+              loadingMap={loadingMap}
+              onMark={onMark}
+              onNudge={onNudge}
+              searchQuery={searchQuery}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Mid group card (L2 — contains leaf groups in 2-col) ─────────────────────
 function MidGroupCard({
-  node, tiers, completedIds, isActive, loadingMap, levelConfigs, onMark, onNudge, leafTierLevel,
+  node, tiers, completedIds, isActive, loadingMap, levelConfigs, onMark, onNudge,
+  leafTierLevel, expanded, onToggle, searchQuery,
 }: {
   node: EmployeeNode
   tiers: ChallengeTier[]
@@ -291,6 +326,9 @@ function MidGroupCard({
   onMark: (id: string, ids: string[]) => void
   onNudge: (id: string, ids: string[]) => void
   leafTierLevel: number
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  searchQuery?: string
 }) {
   const subtree = flatSubtree(node)
   const subtreeIds = subtree.map(e => e.id)
@@ -302,6 +340,7 @@ function MidGroupCard({
   const thresholdCount = Math.ceil(totalCount * thresholdPct / 100)
   const levelLabel = levelConfigs.find(c => c.level === node.level)?.label ?? `L${node.level}`
   const leafTier = tiers.find(t => t.level === leafTierLevel)
+  const isExpanded = expanded.has(node.id)
 
   return (
     <div className="bg-indigo-50/40 rounded-xl border border-indigo-100 overflow-hidden">
@@ -316,7 +355,15 @@ function MidGroupCard({
           onMark={onMark}
           size="sm"
         />
-        <span className="font-bold text-sm text-gray-900">{node.full_name}</span>
+        <button
+          onClick={() => onToggle(node.id)}
+          className="flex items-center gap-1.5 min-w-0 hover:opacity-70 transition-opacity"
+        >
+          {isExpanded
+            ? <ChevronDown size={13} className="text-indigo-400 flex-shrink-0" />
+            : <ChevronRight size={13} className="text-indigo-400 flex-shrink-0" />}
+          <span className="font-bold text-sm text-gray-900">{node.full_name}</span>
+        </button>
         <span
           className="text-[9px] font-black text-white px-1.5 py-0.5 rounded flex-shrink-0"
           style={{ background: levelColor(node.level) }}
@@ -341,35 +388,41 @@ function MidGroupCard({
       </div>
 
       {/* Leaf group cards in 2-column grid */}
-      {node.children.length > 0 ? (
-        <div className="px-3 pb-3 grid grid-cols-2 gap-2">
-          {node.children.map(child => (
-            <LeafGroupCard
-              key={child.id}
-              node={child}
-              tierBonus={leafTier?.bonus_tokens ?? 0}
-              thresholdPct={leafTier?.threshold_pct ?? 0}
+      {isExpanded && (
+        node.children.length > 0 ? (
+          <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+            {node.children.map(child => (
+              <LeafGroupCard
+                key={child.id}
+                node={child}
+                tierBonus={leafTier?.bonus_tokens ?? 0}
+                thresholdPct={leafTier?.threshold_pct ?? 0}
+                completedIds={completedIds}
+                isActive={isActive}
+                loadingMap={loadingMap}
+                levelConfigs={levelConfigs}
+                onMark={onMark}
+                onNudge={onNudge}
+                expanded={expanded}
+                onToggle={onToggle}
+                searchQuery={searchQuery}
+              />
+            ))}
+          </div>
+        ) : (
+          /* No children — show own row directly */
+          <div className="border-t border-indigo-100 px-3 pb-3 pt-1 space-y-0.5">
+            <EmployeeRow
+              emp={node}
               completedIds={completedIds}
               isActive={isActive}
               loadingMap={loadingMap}
-              levelConfigs={levelConfigs}
               onMark={onMark}
               onNudge={onNudge}
+              searchQuery={searchQuery}
             />
-          ))}
-        </div>
-      ) : (
-        /* No children — show own rows directly */
-        <div className="px-3 pb-3 space-y-0.5">
-          <EmployeeRow
-            emp={node}
-            completedIds={completedIds}
-            isActive={isActive}
-            loadingMap={loadingMap}
-            onMark={onMark}
-            onNudge={onNudge}
-          />
-        </div>
+          </div>
+        )
       )}
     </div>
   )
@@ -378,7 +431,7 @@ function MidGroupCard({
 // ─── Top section card (L1 — contains mid groups) ─────────────────────────────
 function TopGroupCard({
   node, tiers, completedIds, isActive, loadingMap, levelConfigs, onMark, onNudge,
-  midTierLevel, leafTierLevel,
+  midTierLevel, leafTierLevel, expanded, onToggle, searchQuery,
 }: {
   node: EmployeeNode
   tiers: ChallengeTier[]
@@ -390,6 +443,9 @@ function TopGroupCard({
   onNudge: (id: string, ids: string[]) => void
   midTierLevel: number
   leafTierLevel: number
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  searchQuery?: string
 }) {
   const subtree = flatSubtree(node)
   const subtreeIds = subtree.map(e => e.id)
@@ -400,11 +456,12 @@ function TopGroupCard({
   const thresholdPct = tier?.threshold_pct ?? 0
   const thresholdCount = Math.ceil(totalCount * thresholdPct / 100)
   const levelLabel = levelConfigs.find(c => c.level === node.level)?.label ?? `L${node.level}`
+  const isExpanded = expanded.has(node.id)
 
   return (
     <div className="bg-emerald-50/50 rounded-2xl border border-emerald-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-3.5 flex items-center gap-2 flex-wrap border-b border-emerald-100">
+      <div className="px-5 py-3.5 flex items-center gap-2 flex-wrap">
         <CompletionDot
           empId={node.id}
           loadingKey={node.id + ':self'}
@@ -413,7 +470,15 @@ function TopGroupCard({
           loadingMap={loadingMap}
           onMark={onMark}
         />
-        <span className="font-black text-base text-gray-900">{node.full_name}</span>
+        <button
+          onClick={() => onToggle(node.id)}
+          className="flex items-center gap-1.5 min-w-0 hover:opacity-70 transition-opacity"
+        >
+          {isExpanded
+            ? <ChevronDown size={14} className="text-emerald-500 flex-shrink-0" />
+            : <ChevronRight size={14} className="text-emerald-500 flex-shrink-0" />}
+          <span className="font-black text-base text-gray-900">{node.full_name}</span>
+        </button>
         <span
           className="text-[9px] font-black text-white px-1.5 py-0.5 rounded flex-shrink-0"
           style={{ background: levelColor(node.level) }}
@@ -438,34 +503,40 @@ function TopGroupCard({
       </div>
 
       {/* Mid group cards */}
-      {node.children.length > 0 ? (
-        <div className="p-4 space-y-3">
-          {node.children.map(child => (
-            <MidGroupCard
-              key={child.id}
-              node={child}
-              tiers={tiers}
+      {isExpanded && (
+        node.children.length > 0 ? (
+          <div className="border-t border-emerald-100 p-4 space-y-3">
+            {node.children.map(child => (
+              <MidGroupCard
+                key={child.id}
+                node={child}
+                tiers={tiers}
+                completedIds={completedIds}
+                isActive={isActive}
+                loadingMap={loadingMap}
+                levelConfigs={levelConfigs}
+                onMark={onMark}
+                onNudge={onNudge}
+                leafTierLevel={leafTierLevel}
+                expanded={expanded}
+                onToggle={onToggle}
+                searchQuery={searchQuery}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="border-t border-emerald-100 p-4 space-y-0.5">
+            <EmployeeRow
+              emp={node}
               completedIds={completedIds}
               isActive={isActive}
               loadingMap={loadingMap}
-              levelConfigs={levelConfigs}
               onMark={onMark}
               onNudge={onNudge}
-              leafTierLevel={leafTierLevel}
+              searchQuery={searchQuery}
             />
-          ))}
-        </div>
-      ) : (
-        <div className="p-4 space-y-0.5">
-          <EmployeeRow
-            emp={node}
-            completedIds={completedIds}
-            isActive={isActive}
-            loadingMap={loadingMap}
-            onMark={onMark}
-            onNudge={onNudge}
-          />
-        </div>
+          </div>
+        )
       )}
     </div>
   )
@@ -474,7 +545,7 @@ function TopGroupCard({
 // ─── Root section (L0 — full-width, teal card) ───────────────────────────────
 function RootCard({
   node, tiers, completedIds, isActive, loadingMap, levelConfigs, onMark, onNudge,
-  topTierLevel, midTierLevel, leafTierLevel,
+  topTierLevel, midTierLevel, leafTierLevel, expanded, onToggle, searchQuery,
 }: {
   node: EmployeeNode
   tiers: ChallengeTier[]
@@ -487,6 +558,9 @@ function RootCard({
   topTierLevel: number
   midTierLevel: number
   leafTierLevel: number
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  searchQuery?: string
 }) {
   const subtree = flatSubtree(node)
   const subtreeIds = subtree.map(e => e.id)
@@ -497,11 +571,12 @@ function RootCard({
   const thresholdPct = tier?.threshold_pct ?? 0
   const thresholdCount = Math.ceil(totalCount * thresholdPct / 100)
   const levelLabel = levelConfigs.find(c => c.level === node.level)?.label ?? `L${node.level}`
+  const isExpanded = expanded.has(node.id)
 
   return (
     <div className="bg-teal-50 rounded-2xl border border-teal-200 overflow-hidden">
       {/* Root header */}
-      <div className="px-6 py-4 flex items-center gap-3 flex-wrap border-b border-teal-100">
+      <div className="px-6 py-4 flex items-center gap-3 flex-wrap">
         <CompletionDot
           empId={node.id}
           loadingKey={node.id + ':self'}
@@ -510,7 +585,15 @@ function RootCard({
           loadingMap={loadingMap}
           onMark={onMark}
         />
-        <span className="font-black text-lg text-gray-900">{node.full_name}</span>
+        <button
+          onClick={() => onToggle(node.id)}
+          className="flex items-center gap-1.5 min-w-0 hover:opacity-70 transition-opacity"
+        >
+          {isExpanded
+            ? <ChevronDown size={16} className="text-teal-500 flex-shrink-0" />
+            : <ChevronRight size={16} className="text-teal-500 flex-shrink-0" />}
+          <span className="font-black text-lg text-gray-900">{node.full_name}</span>
+        </button>
         <span
           className="text-[10px] font-black text-white px-2 py-0.5 rounded-md flex-shrink-0"
           style={{ background: levelColor(node.level) }}
@@ -535,35 +618,41 @@ function RootCard({
       </div>
 
       {/* Top-level children */}
-      {node.children.length > 0 ? (
-        <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {node.children.map(child => (
-            <TopGroupCard
-              key={child.id}
-              node={child}
-              tiers={tiers}
+      {isExpanded && (
+        node.children.length > 0 ? (
+          <div className="border-t border-teal-100 p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {node.children.map(child => (
+              <TopGroupCard
+                key={child.id}
+                node={child}
+                tiers={tiers}
+                completedIds={completedIds}
+                isActive={isActive}
+                loadingMap={loadingMap}
+                levelConfigs={levelConfigs}
+                onMark={onMark}
+                onNudge={onNudge}
+                midTierLevel={midTierLevel}
+                leafTierLevel={leafTierLevel}
+                expanded={expanded}
+                onToggle={onToggle}
+                searchQuery={searchQuery}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="border-t border-teal-100 p-5 space-y-0.5">
+            <EmployeeRow
+              emp={node}
               completedIds={completedIds}
               isActive={isActive}
               loadingMap={loadingMap}
-              levelConfigs={levelConfigs}
               onMark={onMark}
               onNudge={onNudge}
-              midTierLevel={midTierLevel}
-              leafTierLevel={leafTierLevel}
+              searchQuery={searchQuery}
             />
-          ))}
-        </div>
-      ) : (
-        <div className="p-5 space-y-0.5">
-          <EmployeeRow
-            emp={node}
-            completedIds={completedIds}
-            isActive={isActive}
-            loadingMap={loadingMap}
-            onMark={onMark}
-            onNudge={onNudge}
-          />
-        </div>
+          </div>
+        )
       )}
     </div>
   )
@@ -578,6 +667,38 @@ export default function SimulatorChallengeView({
   const [loadingMap, setLoadingMap] = useState<Record<string, 'marking' | 'nudging' | null>>({})
   const [bulkLoading, setBulkLoading] = useState<'marking' | 'nudging' | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  // Default: only L0 (root) nodes expanded — user drills in manually
+  const [expanded, setExpanded] = useState<Set<string>>(() =>
+    new Set(employees.filter(e => e.level === 0).map(e => e.id))
+  )
+  const toggleExpanded = (id: string) =>
+    setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  const expandAll   = () => setExpanded(new Set(employees.map(e => e.id)))
+  const collapseAll = () => setExpanded(new Set(employees.filter(e => e.level === 0).map(e => e.id)))
+
+  // ── Search ──────────────────────────────────────────────────────────────────
+  const [search, setSearch] = useState('')
+
+  const matchingIds = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return null
+    return new Set(employees.filter(e => e.full_name.toLowerCase().includes(q)).map(e => e.id))
+  }, [search, employees])
+
+  // When searching, auto-expand all ancestors of matching employees
+  const effectiveExpanded = useMemo(() => {
+    if (!matchingIds) return expanded
+    const parentMap = new Map(
+      employees.filter(e => e.manager_id).map(e => [e.id, e.manager_id!])
+    )
+    const toExpand = new Set<string>()
+    matchingIds.forEach(id => {
+      let cur = parentMap.get(id)
+      while (cur) { toExpand.add(cur); cur = parentMap.get(cur) }
+    })
+    return new Set([...expanded, ...toExpand])
+  }, [matchingIds, expanded, employees])
 
   const tree = useMemo(() => buildTree(employees), [employees])
 
@@ -653,8 +774,8 @@ export default function SimulatorChallengeView({
     <div className="flex flex-col flex-1 overflow-hidden relative">
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-white space-y-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={onBack}
             className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors flex-shrink-0"
@@ -668,6 +789,11 @@ export default function SimulatorChallengeView({
               <span className="font-bold text-amber-600">{pendingCount}</span> pending ·{' '}
               {totalCount} total
             </p>
+          </div>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={expandAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Expand all</button>
+            <button onClick={collapseAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Collapse</button>
           </div>
 
           {isActive && (
@@ -691,6 +817,28 @@ export default function SimulatorChallengeView({
                   : <><CheckCircle2 size={11} /> Mark All</>}
               </button>
             </div>
+          )}
+        </div>
+
+        {/* Search bar */}
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:border-indigo-300 focus-within:bg-white transition-colors">
+          <Search size={14} className="text-gray-400 flex-shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search employee…"
+            className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+              <X size={13} />
+            </button>
+          )}
+          {matchingIds !== null && (
+            <span className="text-[11px] font-bold text-indigo-600 flex-shrink-0">
+              {matchingIds.size} found
+            </span>
           )}
         </div>
 
@@ -725,6 +873,9 @@ export default function SimulatorChallengeView({
               topTierLevel={topTierLevel}
               midTierLevel={midTierLevel}
               leafTierLevel={leafTierLevel}
+              expanded={effectiveExpanded}
+              onToggle={toggleExpanded}
+              searchQuery={search.trim() || undefined}
             />
           ))
         )}
