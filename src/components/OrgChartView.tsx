@@ -51,64 +51,89 @@ function ChartCard({
 
   return (
     <div
-      className={`w-44 bg-white rounded-xl border shadow-sm hover:shadow-md transition-all overflow-hidden group ${
-        isTenantAdmin ? 'border-amber-300 ring-1 ring-amber-200' : 'border-gray-200'
+      className={`w-52 bg-white rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group relative ${
+        isTenantAdmin ? 'border-amber-400 ring-2 ring-amber-200/50' : 'border-gray-200 hover:border-indigo-300'
       }`}
-      style={{ borderTop: `3px solid ${isTenantAdmin ? '#f59e0b' : color}` }}
     >
-      {/* Level badge + name */}
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-        <span
-          className="text-[9px] font-black text-white px-1.5 py-0.5 rounded-md flex-shrink-0"
-          style={{ background: isTenantAdmin ? '#f59e0b' : color }}
-        >
-          L{node.level}
-        </span>
-        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">
-          {label}
-        </span>
-        {isTenantAdmin && (
-          <ShieldCheck size={11} className="text-amber-500 flex-shrink-0 ml-auto" />
-        )}
-      </div>
+      {/* Accent bar */}
+      <div 
+        className="h-1.5 w-full"
+        style={{ background: isTenantAdmin ? '#f59e0b' : color }}
+      />
 
-      {/* Name */}
-      <div className="px-3 pb-2">
-        <div className="text-sm font-bold text-gray-900 leading-tight">
-          {node.first_name} <span className="font-semibold">{node.last_name}</span>
+      {/* Card content */}
+      <div className="p-4">
+        {/* Level badge + Admin badge */}
+        <div className="flex items-center gap-2 mb-3">
+          <span
+            className="text-[10px] font-black text-white px-2.5 py-1 rounded-lg shadow-sm flex-shrink-0"
+            style={{ background: isTenantAdmin ? '#f59e0b' : color }}
+          >
+            L{node.level}
+          </span>
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider truncate">
+            {label}
+          </span>
+          {isTenantAdmin && (
+            <ShieldCheck size={13} className="text-amber-500 flex-shrink-0 ml-auto" />
+          )}
         </div>
-        {isTenantAdmin && (
-          <div className="text-[10px] font-semibold text-amber-500 mt-0.5">Tenant Admin</div>
-        )}
-        {node.employee_id && (
-          <div className="text-[10px] font-mono text-gray-400 mt-0.5">{node.employee_id}</div>
-        )}
-        {node.team_name && (
-          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400">
-            <Users size={8} /> {node.team_name}
+
+        {/* Name */}
+        <div className="mb-3">
+          <div className="text-base font-extrabold text-gray-900 leading-tight mb-0.5">
+            {node.first_name}
           </div>
-        )}
+          <div className="text-base font-semibold text-gray-700 leading-tight">
+            {node.last_name}
+          </div>
+          {isTenantAdmin && (
+            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-600 mt-1.5">
+              <ShieldCheck size={11} /> Tenant Admin
+            </div>
+          )}
+        </div>
+
+        {/* Meta info */}
+        <div className="space-y-1.5">
+          {node.employee_id && (
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              <span className="font-mono font-semibold">{node.employee_id}</span>
+            </div>
+          )}
+          {node.team_name && (
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+              <Users size={11} className="flex-shrink-0" />
+              <span className="font-medium truncate">{node.team_name}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-t border-gray-100">
+      {/* Footer actions */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t border-gray-200">
         {!isL0 && !readOnly ? (
           <button
             onClick={() => onEdit(node)}
-            className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 hover:text-indigo-600 transition-all opacity-0 group-hover:opacity-100 hover:scale-105"
           >
-            <Pencil size={9} /> Edit
+            <Pencil size={11} /> Edit
           </button>
         ) : <div />}
 
         {hasChildren && (
           <button
             onClick={onToggle}
-            className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-indigo-600 transition-colors ml-auto"
+            className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ml-auto ${
+              isExpanded 
+                ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' 
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
           >
             {isExpanded
-              ? <><ChevronUp size={10} /> {node.children.length}</>
-              : <><ChevronDown size={10} /> {node.children.length}</>
+              ? <><ChevronUp size={12} /> {node.children.length}</>
+              : <><ChevronDown size={12} /> {node.children.length}</>
             }
           </button>
         )}
@@ -152,8 +177,8 @@ function ChartNode({
 
       {hasChildren && isExpanded && (
         <>
-          {/* Vertical line from card down to horizontal bar */}
-          <div className="w-px h-7 bg-slate-300" />
+          {/* Vertical connector line */}
+          <div className="w-0.5 h-8 bg-gradient-to-b from-indigo-300 to-indigo-200 rounded-full" />
           {/* Children row — connector lines handled by CSS .oc-child */}
           <div className="oc-children">
             {node.children.map(child => (
@@ -177,10 +202,10 @@ function ChartNode({
       {hasChildren && !isExpanded && (
         <button
           onClick={() => onToggle(node.id)}
-          className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-full px-2.5 py-0.5 transition-colors"
+          className="mt-3 flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-200 hover:border-indigo-300 rounded-xl px-4 py-2 transition-all shadow-sm hover:shadow-md hover:scale-105"
         >
-          <ChevronDown size={9} />
-          {node.children.length} report{node.children.length !== 1 ? 's' : ''} hidden
+          <ChevronDown size={13} />
+          <span>{node.children.length} report{node.children.length !== 1 ? 's' : ''}</span>
         </button>
       )}
     </div>
@@ -226,33 +251,43 @@ export default function OrgChartView({ employees, levelConfigs, onEdit, readOnly
   }, [employees, levelConfigs])
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden bg-gradient-to-br from-slate-50 to-indigo-50">
 
       {/* Level legend strip */}
-      <div className="flex-shrink-0 flex items-center gap-1.5 px-5 py-2.5 bg-white border-b border-gray-200 flex-wrap">
+      <div className="flex-shrink-0 flex items-center gap-2 px-6 py-4 bg-white/80 backdrop-blur-sm border-b-2 border-gray-200 shadow-sm flex-wrap">
         {presentLevels.map(({ level, label }) => (
-          <div key={level} className="flex items-center gap-1.5">
+          <div key={level} className="flex items-center gap-2">
             <span
-              className="flex items-center gap-1 text-[10px] font-bold text-white px-2 py-0.5 rounded-md"
+              className="flex items-center gap-1.5 text-[11px] font-black text-white px-3 py-1.5 rounded-lg shadow-sm"
               style={{ background: levelColor(level) }}
             >
               L{level}
             </span>
-            <span className="text-[11px] font-semibold text-gray-600">{label}</span>
+            <span className="text-[12px] font-bold text-gray-700">{label}</span>
             {level < presentLevels[presentLevels.length - 1].level && (
-              <span className="text-gray-200 text-sm">·</span>
+              <span className="text-gray-300 text-base mx-1">•</span>
             )}
           </div>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={expandAll}   className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Expand all</button>
-          <button onClick={collapseAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Collapse</button>
+          <button 
+            onClick={expandAll} 
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-all hover:shadow-sm"
+          >
+            Expand all
+          </button>
+          <button 
+            onClick={collapseAll} 
+            className="text-xs font-semibold text-gray-600 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 px-3 py-1.5 rounded-lg transition-all hover:shadow-sm"
+          >
+            Collapse
+          </button>
         </div>
       </div>
 
       {/* Chart canvas — scrollable in both directions */}
-      <div className="flex-1 overflow-auto p-8">
-        <div className={`inline-flex gap-12 items-start ${tree.length === 1 ? 'flex-col items-center min-w-full' : 'flex-row'}`}>
+      <div className="flex-1 overflow-auto p-10">
+        <div className={`inline-flex gap-16 items-start ${tree.length === 1 ? 'flex-col items-center min-w-full' : 'flex-row'}`}>
           {tree.map(root => (
             <ChartNode
               key={root.id}

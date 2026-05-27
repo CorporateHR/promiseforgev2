@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, User, Users } from 'lucide-react'
 import type { Profile } from '@/lib/types'
 
@@ -14,12 +14,10 @@ interface Props {
 }
 
 // Separate component so useSearchParams is inside a Suspense boundary
-function ViewSwitcher({ profile, isManager }: { profile: Profile | null; isManager: boolean }) {
-  const searchParams = useSearchParams()
+function ViewSwitcher({ profile, isManager, currentPath }: { profile: Profile | null; isManager: boolean; currentPath: string }) {
   const router = useRouter()
 
   const role = profile?.role
-  const view = searchParams.get('view') ?? ''
 
   // Which tabs to show
   const showAdmin   = role === 'tenant_admin'
@@ -30,10 +28,13 @@ function ViewSwitcher({ profile, isManager }: { profile: Profile | null; isManag
   const tabCount = (showAdmin ? 1 : 0) + (showManager ? 1 : 0) + (showEmployee ? 1 : 0)
   if (tabCount <= 1) return null
 
-  // Derive active tab
+  // Derive active tab based on current path
   const active =
-    view === 'employee' ? 'employee'
-    : view === 'manager' ? 'manager'
+    currentPath.includes('/admin/employee') ? 'employee'
+    : currentPath.includes('/admin/manager') ? 'manager'
+    : currentPath.includes('/admin') ? 'admin'
+    : currentPath.includes('/manager') ? 'manager'
+    : currentPath.includes('/employee') ? 'employee'
     : role === 'tenant_admin' ? 'admin'
     : isManager ? 'manager'
     : 'employee'
@@ -50,17 +51,24 @@ function ViewSwitcher({ profile, isManager }: { profile: Profile | null; isManag
     </button>
   )
 
+  // Determine base path for navigation
+  const isTenantAdmin = role === 'tenant_admin'
+  const adminPath = isTenantAdmin ? '/dashboard/admin' : '/dashboard'
+  const managerPath = isTenantAdmin ? '/dashboard/admin/manager' : '/dashboard/manager'
+  const employeePath = isTenantAdmin ? '/dashboard/admin/employee' : '/dashboard/employee'
+
   return (
     <div className="flex items-center bg-white/10 border border-white/15 rounded-lg p-0.5 gap-0.5">
-      {showAdmin    && pill('Admin',    <LayoutDashboard size={12} />, '/dashboard',                  'admin')}
-      {showManager  && pill('Manager',  <Users size={12} />,           '/dashboard?view=manager',     'manager')}
-      {showEmployee && pill('Employee', <User size={12} />,            '/dashboard?view=employee',    'employee')}
+      {showAdmin    && pill('Admin',    <LayoutDashboard size={12} />, adminPath,    'admin')}
+      {showManager  && pill('Manager',  <Users size={12} />,           managerPath,  'manager')}
+      {showEmployee && pill('Employee', <User size={12} />,            employeePath, 'employee')}
     </div>
   )
 }
 
 export default function DashboardShell({ profile, userEmail, isManager = false, children }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
   const supabase = createClient()
 
   async function handleSignOut() {
@@ -90,7 +98,7 @@ export default function DashboardShell({ profile, userEmail, isManager = false, 
 
         {/* Role switcher */}
         <Suspense fallback={null}>
-          <ViewSwitcher profile={profile} isManager={isManager} />
+          <ViewSwitcher profile={profile} isManager={isManager} currentPath={pathname} />
         </Suspense>
 
         <div className="ml-auto flex items-center gap-3">

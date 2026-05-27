@@ -3,6 +3,25 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// ─── Shared subtree util (server-side) ───────────────────────────────────────
+function buildSubtreeIds(
+  managerId: string,
+  all: { id: string; manager_id: string | null }[],
+): Set<string> {
+  const result = new Set<string>()
+  const queue = [managerId]
+  const seen = new Set<string>()
+  while (queue.length) {
+    const id = queue.shift()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    for (const e of all) {
+      if (e.manager_id === id) { result.add(e.id); queue.push(e.id) }
+    }
+  }
+  return result
+}
+
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 async function getTenantAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -284,4 +303,89 @@ export async function nudgeAll(
   }
 
   return { success: true, count: incomplete.length }
+}
+
+// ─── Manager auth helper ──────────────────────────────────────────────────────
+async function getManagerEmployee(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, role, organization_id')
+    .eq('id', user.id)
+    .single()
+  if (!profile || profile.role !== 'employee') return null
+  const { data: employee } = await supabase
+    .from('employees')
+    .select('*')
+    .eq('organization_id', profile.organization_id)
+    .eq('email', user.email!)
+    .single()
+  if (!employee) return null
+  const { count } = await supabase
+    .from('employees')
+    .select('id', { count: 'exact', head: true })
+    .eq('manager_id', employee.id)
+  if (!count || count === 0) return null
+  return { profile, employee }
+}
+
+// ─── Manager: nudge one employee in subtree ───────────────────────────────────
+export async function nudgeEmployeeAsManager(
+  challengeId: string,
+  employeeId: string,
+): Promise<{ success: true } | { error: string }> {
+  const supabase = await createClient()
+  const mgr = await getManagerEmployee(supabase)
+  if (!mgr) return { error: 'Forbidden' }
+
+  const [{ data: challenge }, { data: allOrgEmployees }, { data: target }] = await Promise.all([
+    supabase.from('challenges').select('id, title, organization_id, status, due_date').eq('id', challengeId).single(),
+    supabase.from('employees').select('id, manager_id').eq('organization_id', mgr.profile.organization_id),
+    supabase.from('employees').select('id, full_name, email, organization_id').eq('id', employeeId).single(),
+  ])
+
+  if (!challenge) return { error: 'Challenge not found' }
+  if (challenge.organization_id !== mgr.profile.organization_id) return { error: 'Forbidden' }
+  if (challenge.status !== 'active') return { error: 'Challenge is not active' }
+  if (!target || target.organization_id !== mgr.profile.organization_id) return { error: 'Employee not found' }
+
+  const subtree = buildSubtreeIds(mgr.employee.id, allOrgEmployees ?? [])
+  if (!subtree.has(employeeId)) return { error: 'Employee is not in your team' }
+  if (!target.email) return { error: 'Employee has no email address' }
+
+  // TODO: Replace with your email provider (e.g. Resend)
+  console.log(`[Manager Nudge] → ${target.email} | Challenge: ${challenge.title} | Mgr: ${mgr.employee.full_name}`)
+
+  return { success: true }
+}
+
+// ─── Manager: nudge all incomplete in subtree ─────────────────────────────────
+export async function nudgeAllIncompleteAsManager(
+  challengeId: string,
+): Promise<{ success: true; count: number } | { error: string }> {
+  const supabase = await createClient()
+  const mgr = await getManagerEmployee(supabase)
+  if (!mgr) return { error: 'Forbidden' }
+
+  const [{ data: challenge }, { data: allOrgEmployees }, { data: completions }] = await Promise.all([
+    supabase.from('challenges').select('id, title, organization_id, status, due_date').eq('id', challengeId).single(),
+    supabase.from('employees').select('id, full_name, email, manager_id').eq('organization_id', mgr.profile.organization_id),
+    supabase.from('challenge_completions').select('employee_id').eq('challenge_id', challengeId),
+  ])
+
+  if (!challenge) return { error: 'Challenge not found' }
+  if (challenge.organization_id !== mgr.profile.organization_id) return { error: 'Forbidden' }
+  if (challenge.status !== 'active') return { error: 'Challenge is not active' }
+
+  const subtree = buildSubtreeIds(mgr.employee.id, allOrgEmployees ?? [])
+  const doneSet = new Set((completions ?? []).map((c: any) => c.employee_id))
+  const toNudge = (allOrgEmployees ?? []).filter(e => subtree.has(e.id) && !doneSet.has(e.id) && e.email)
+
+  for (const emp of toNudge) {
+    // TODO: Replace with your email provider (e.g. Resend)
+    console.log(`[Manager Nudge All] → ${emp.email} | Challenge: ${challenge.title} | Mgr: ${mgr.employee.full_name}`)
+  }
+
+  return { success: true, count: toNudge.length }
 }

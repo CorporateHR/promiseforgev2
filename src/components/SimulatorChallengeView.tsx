@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import {
   ArrowLeft, CheckCircle2, Bell, Loader2, BellRing,
-  AlertCircle, Users, Zap, ChevronDown, ChevronRight, Search, X,
+  AlertCircle, Users, Zap, ChevronDown, ChevronRight, Search, X, RefreshCw,
 } from 'lucide-react'
 import {
   adminMarkGroupCompletion,
@@ -11,6 +11,7 @@ import {
   adminMarkAllCompletion,
   nudgeAll,
 } from '@/app/actions/simulator'
+import { getLiveCompletions } from '@/app/actions/challenges'
 import type { ChallengeWithTiers, ChallengeTier, Employee, OrgLevelConfig, EmployeeNode } from '@/lib/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -666,14 +667,40 @@ export default function SimulatorChallengeView({
   const [completedIds, setCompletedIds] = useState(new Set(initialCompleted))
   const [loadingMap, setLoadingMap] = useState<Record<string, 'marking' | 'nudging' | null>>({})
   const [bulkLoading, setBulkLoading] = useState<'marking' | 'nudging' | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   // Default: only L0 (root) nodes expanded — user drills in manually
   const [expanded, setExpanded] = useState<Set<string>>(() =>
     new Set(employees.filter(e => e.level === 0).map(e => e.id))
   )
+  
+  // Helper to get all descendant IDs of a node
+  const getDescendantIds = (nodeId: string): string[] => {
+    const descendants: string[] = []
+    const children = employees.filter(e => e.manager_id === nodeId)
+    for (const child of children) {
+      descendants.push(child.id)
+      descendants.push(...getDescendantIds(child.id))
+    }
+    return descendants
+  }
+  
   const toggleExpanded = (id: string) =>
-    setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        // Collapsing: remove this node AND all its descendants
+        next.delete(id)
+        const descendants = getDescendantIds(id)
+        descendants.forEach(descId => next.delete(descId))
+      } else {
+        // Expanding: just add this node
+        next.add(id)
+      }
+      return next
+    })
+  
   const expandAll   = () => setExpanded(new Set(employees.map(e => e.id)))
   const collapseAll = () => setExpanded(new Set(employees.filter(e => e.level === 0).map(e => e.id)))
 
@@ -770,6 +797,15 @@ export default function SimulatorChallengeView({
     showToast('success', `Nudge sent to ${result.count} employees`)
   }
 
+  async function handleRefresh() {
+    setRefreshing(true)
+    const result = await getLiveCompletions(challenge.id)
+    setRefreshing(false)
+    if ('error' in result) { showToast('error', result.error); return }
+    setCompletedIds(new Set(result.completedIds))
+    showToast('success', 'Completion status refreshed')
+  }
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative">
 
@@ -792,6 +828,15 @@ export default function SimulatorChallengeView({
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+              title="Refresh completion status"
+            >
+              <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
             <button onClick={expandAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Expand all</button>
             <button onClick={collapseAll} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors">Collapse</button>
           </div>

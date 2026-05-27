@@ -259,6 +259,37 @@ export async function recordCompletion(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function getLiveCompletions(
+  challengeId: string,
+): Promise<{ completedIds: string[] } | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('organization_id')
+    .eq('id', user.id)
+    .single()
+  if (!profile?.organization_id) return { error: 'No organization' }
+
+  const { data: challenge } = await supabase
+    .from('challenges')
+    .select('organization_id')
+    .eq('id', challengeId)
+    .single()
+  if (!challenge || challenge.organization_id !== profile.organization_id) return { error: 'Not found' }
+
+  const { data } = await supabase
+    .from('challenge_completions')
+    .select('employee_id')
+    .eq('challenge_id', challengeId)
+
+  return { completedIds: (data ?? []).map((c: any) => c.employee_id) }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getChallengesWithTiers(
   orgId: string,
 ): Promise<{ challenges: ChallengeWithTiers[] } | { error: string }> {

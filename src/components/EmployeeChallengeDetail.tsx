@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import {
   ArrowLeft, Trophy, Calendar, CheckCircle2, AlertCircle,
-  Loader2, Layers, Target,
+  Loader2, Layers, Target, RefreshCw,
 } from 'lucide-react'
-import { recordCompletion } from '@/app/actions/challenges'
+import { recordCompletion, getLiveCompletions } from '@/app/actions/challenges'
 import type { ChallengeWithTiers, ChallengeTier, Employee } from '@/lib/types'
 
 const LEVEL_COLORS = [
@@ -160,9 +160,20 @@ export default function EmployeeChallengeDetail({
 }: Props) {
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  // Override completions with live data after refresh
+  const [liveCompletedIds, setLiveCompletedIds] = useState<Set<string> | null>(null)
 
-  // Build completed set for this challenge
-  const completedSet = new Set(
+  async function handleRefresh() {
+    setRefreshing(true)
+    const result = await getLiveCompletions(challenge.id)
+    setRefreshing(false)
+    if ('error' in result) return
+    setLiveCompletedIds(new Set(result.completedIds))
+  }
+
+  // Build completed set for this challenge — use live data if available
+  const completedSet = liveCompletedIds ?? new Set(
     allCompletions.filter(c => c.challenge_id === challenge.id).map(c => c.employee_id),
   )
   const myCompletion = allCompletions.find(
@@ -215,7 +226,7 @@ export default function EmployeeChallengeDetail({
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className={`h-1 w-full ${challenge.status === 'active' ? 'bg-indigo-500' : challenge.status === 'ended' ? 'bg-slate-300' : 'bg-gray-200'}`} />
           <div className="p-5">
-            {/* Top row: back + title + status */}
+            {/* Top row: back + title + status + refresh */}
             <div className="flex items-start gap-3 mb-2">
               <button
                 onClick={onBack}
@@ -258,6 +269,17 @@ export default function EmployeeChallengeDetail({
                   </span>
                 )}
               </div>
+
+              {/* Refresh button */}
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50 flex-shrink-0"
+                title="Refresh group progress"
+              >
+                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
 
               {/* Completed chip or Mark Complete button */}
               {isCompleted ? (

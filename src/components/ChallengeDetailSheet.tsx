@@ -1,6 +1,8 @@
 'use client'
 
-import { X, Trophy, Calendar, Users, Coins, Zap, CheckCircle2, Clock } from 'lucide-react'
+import { useState } from 'react'
+import { X, Trophy, Calendar, Users, Coins, Zap, CheckCircle2, Clock, RefreshCw, AlertCircle } from 'lucide-react'
+import { getLiveCompletions } from '@/app/actions/challenges'
 import type { ChallengeWithTiers, Employee, OrgLevelConfig } from '@/lib/types'
 
 const LEVEL_COLORS = [
@@ -51,12 +53,28 @@ interface Props {
 export default function ChallengeDetailSheet({
   challenge, employees, levelConfigs, completedEmployeeIds, onClose,
 }: Props) {
+  const [completedIds, setCompletedIds] = useState(completedEmployeeIds)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    setRefreshError(null)
+    const result = await getLiveCompletions(challenge.id)
+    setRefreshing(false)
+    if ('error' in result) { setRefreshError(result.error); return }
+    setCompletedIds(new Set(result.completedIds))
+  }
+
+  // Use local state instead of prop directly
+  const completedEmployeeIdsLocal = completedIds
+
   const sortedTiers = [...challenge.tiers].sort((a, b) => a.level - b.level)
   const individualTier = sortedTiers.find(t => t.is_individual)
   const groupTiers = sortedTiers.filter(t => !t.is_individual && t.enabled)
 
   const totalEmployees = employees.length
-  const completedCount = completedEmployeeIds.size
+  const completedCount = completedEmployeeIdsLocal.size
   const progressPct = totalEmployees > 0 ? Math.round((completedCount / totalEmployees) * 100) : 0
 
   const maxPerEmployee =
@@ -89,13 +107,28 @@ export default function ChallengeDetailSheet({
             </span>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-2"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh completion status"
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
+      {refreshError && (
+        <div className="flex items-center gap-2 px-5 py-2 bg-red-50 border-b border-red-100 text-xs text-red-600">
+          <AlertCircle size={11} /> {refreshError}
+        </div>
+      )}
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
@@ -152,7 +185,7 @@ export default function ChallengeDetailSheet({
 
               const groupsHit = groups
                 ? Array.from(groups.values()).filter(group => {
-                    const completed = group.filter(e => completedEmployeeIds.has(e.id)).length
+                    const completed = group.filter(e => completedEmployeeIdsLocal.has(e.id)).length
                     return group.length > 0 && (completed / group.length) * 100 >= (tier.threshold_pct ?? 0)
                   }).length
                 : 0
@@ -200,7 +233,7 @@ export default function ChallengeDetailSheet({
                         <div className="mt-2 space-y-1.5">
                           {Array.from(groups.entries()).map(([ancestorId, group]) => {
                             const ancestor = employees.find(e => e.id === ancestorId)
-                            const done = group.filter(e => completedEmployeeIds.has(e.id)).length
+                            const done = group.filter(e => completedEmployeeIdsLocal.has(e.id)).length
                             const pct = Math.round((done / group.length) * 100)
                             const hit = pct >= (tier.threshold_pct ?? 0)
                             return (

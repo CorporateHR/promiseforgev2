@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Mail, Users, Building2, Trophy, Calendar, Zap, CheckCircle2, ChevronRight } from 'lucide-react'
-import EmployeeChallengeDetail from '@/components/EmployeeChallengeDetail'
 import type { Employee, OrgLevelConfig, Organization, ChallengeWithTiers } from '@/lib/types'
 
 const LEVEL_COLORS = [
@@ -102,8 +102,8 @@ export default function EmployeePortal({
   allEmployees,
   allChallengeCompletions: initialCompletions,
 }: Props) {
+  const router = useRouter()
   const [completions, setCompletions] = useState(initialCompletions)
-  const [selectedChallenge, setSelectedChallenge] = useState<ChallengeWithTiers | null>(null)
 
   const getLabel = (l: number) => levelConfigs.find(c => c.level === l)?.label ?? `L${l}`
   const color = levelColor(employee.level)
@@ -113,24 +113,6 @@ export default function EmployeePortal({
   const completedIds = new Set(
     completions.filter(c => c.employee_id === employee.id).map(c => c.challenge_id),
   )
-
-  function handleComplete(challengeId: string, employeeId: string, completedAt: string) {
-    setCompletions(prev => [...prev, { challenge_id: challengeId, employee_id: employeeId, completed_at: completedAt }])
-  }
-
-  // ── If a challenge is selected, show the detail view ──────────────────────
-  if (selectedChallenge) {
-    return (
-      <EmployeeChallengeDetail
-        challenge={selectedChallenge}
-        employee={employee}
-        allEmployees={allEmployees}
-        allCompletions={completions}
-        onBack={() => setSelectedChallenge(null)}
-        onComplete={handleComplete}
-      />
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6">
@@ -265,7 +247,7 @@ export default function EmployeePortal({
                 key={c.id}
                 challenge={c}
                 isCompleted={completedIds.has(c.id)}
-                onClick={() => setSelectedChallenge(c)}
+                onClick={() => router.push(`/dashboard/employee/challenges/${c.id}`)}
               />
             ))}
           </div>

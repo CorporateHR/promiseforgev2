@@ -25,6 +25,7 @@ interface Props {
   initialManagerBudgets: ManagerBudget[]
   initialChallenges: ChallengeWithTiers[]
   initialCompletions: any[]
+  defaultView?: 'list' | 'chart' | 'budget' | 'challenges' | 'simulator'
 }
 
 const LEVEL_COLORS = [
@@ -504,6 +505,7 @@ export default function OrgManager({
   initialManagerBudgets,
   initialChallenges,
   initialCompletions,
+  defaultView = 'list',
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -516,7 +518,7 @@ export default function OrgManager({
   )
   const [search, setSearch] = useState('')
 
-  const [activeView, setActiveView] = useState<'list' | 'chart' | 'budget' | 'challenges' | 'simulator'>('list')
+  const activeView = defaultView
 
   // Modal state
   const [addModal, setAddModal] = useState<{ managerId?: string; defaultLevel?: number } | null>(null)
@@ -734,7 +736,7 @@ export default function OrgManager({
             {/* List/Chart/Budget tabs */}
             <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
               <button
-                onClick={() => setActiveView('list')}
+                onClick={() => router.push('/dashboard/admin')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   activeView === 'list'
                     ? 'bg-white shadow text-gray-900'
@@ -744,7 +746,7 @@ export default function OrgManager({
                 <List size={12} /> List
               </button>
               <button
-                onClick={() => setActiveView('chart')}
+                onClick={() => router.push('/dashboard/admin/chart')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   activeView === 'chart'
                     ? 'bg-white shadow text-gray-900'
@@ -754,7 +756,7 @@ export default function OrgManager({
                 <GitFork size={12} /> Chart
               </button>
               <button
-                onClick={() => setActiveView('budget')}
+                onClick={() => router.push('/dashboard/admin/budget')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   activeView === 'budget'
                     ? 'bg-white shadow text-gray-900'
@@ -764,7 +766,7 @@ export default function OrgManager({
                 <Coins size={12} /> Budget
               </button>
               <button
-                onClick={() => setActiveView('challenges')}
+                onClick={() => router.push('/dashboard/admin/challenges')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   activeView === 'challenges'
                     ? 'bg-white shadow text-gray-900'
@@ -774,7 +776,7 @@ export default function OrgManager({
                 <Trophy size={12} /> Challenges
               </button>
               <button
-                onClick={() => setActiveView('simulator')}
+                onClick={() => router.push('/dashboard/admin/simulator')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   activeView === 'simulator'
                     ? 'bg-white shadow text-violet-700'

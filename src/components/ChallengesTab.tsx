@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Trophy, Plus, X, CheckCircle2, AlertCircle, Loader2,
   Calendar, Coins, ChevronRight, Users, Zap,
@@ -214,10 +215,10 @@ export default function ChallengesTab({
   orgId, employees, levelConfigs, totalBudget,
   initialChallenges, initialManagerBudgets, initialCompletions,
 }: Props) {
+  const router = useRouter()
   const [challenges, setChallenges] = useState(initialChallenges)
   const [completions, setCompletions] = useState(initialCompletions)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [detailChallenge, setDetailChallenge] = useState<ChallengeWithTiers | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
@@ -252,7 +253,7 @@ export default function ChallengesTab({
     action: 'publish' | 'end' | 'delete' | 'view',
   ) {
     if (action === 'view') {
-      setDetailChallenge(challenge)
+      router.push(`/dashboard/admin/challenges/${challenge.id}`)
       return
     }
 
@@ -350,23 +351,6 @@ export default function ChallengesTab({
           onCreated={handleCreated}
           onClose={() => setSheetOpen(false)}
         />
-      )}
-
-      {/* Detail sheet */}
-      {detailChallenge && (
-        <>
-          <div
-            className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-10"
-            onClick={() => setDetailChallenge(null)}
-          />
-          <ChallengeDetailSheet
-            challenge={detailChallenge}
-            employees={employees}
-            levelConfigs={levelConfigs}
-            completedEmployeeIds={completionMap.get(detailChallenge.id) ?? new Set()}
-            onClose={() => setDetailChallenge(null)}
-          />
-        </>
       )}
 
       {/* Toast */}
