@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import { publishChallenge, endChallenge, deleteChallenge } from '@/app/actions/challenges'
 import CreateChallengeSheet from './CreateChallengeSheet'
-import ChallengeDetailSheet from './ChallengeDetailSheet'
 import type { Employee, OrgLevelConfig, ChallengeWithTiers, ManagerBudget, ChallengeCompletion } from '@/lib/types'
 
 function fmt(n: number) { return n.toLocaleString() }
@@ -253,7 +252,7 @@ export default function ChallengesTab({
     action: 'publish' | 'end' | 'delete' | 'view',
   ) {
     if (action === 'view') {
-      router.push(`/dashboard/admin/challenges/${challenge.id}`)
+      router.push(`/dashboard/admin/list?challengeId=${challenge.id}`)
       return
     }
 

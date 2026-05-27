@@ -47,11 +47,12 @@ interface Props {
   employees: Employee[]
   levelConfigs: OrgLevelConfig[]
   completedEmployeeIds: Set<string>
-  onClose: () => void
+  onClose?: () => void
+  isFullPage?: boolean
 }
 
 export default function ChallengeDetailSheet({
-  challenge, employees, levelConfigs, completedEmployeeIds, onClose,
+  challenge, employees, levelConfigs, completedEmployeeIds, onClose, isFullPage = false,
 }: Props) {
   const [completedIds, setCompletedIds] = useState(completedEmployeeIds)
   const [refreshing, setRefreshing] = useState(false)
@@ -116,12 +117,14 @@ export default function ChallengeDetailSheet({
           >
             <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X size={16} />
-          </button>
+          {!isFullPage && onClose && (
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       </div>
       {refreshError && (

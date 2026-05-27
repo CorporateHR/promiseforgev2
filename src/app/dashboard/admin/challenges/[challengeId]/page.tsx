@@ -54,7 +54,6 @@ export default async function AdminChallengeDetailPage({
         employees={employees ?? []}
         levelConfigs={levelConfigs ?? []}
         completedEmployeeIds={completedEmployeeIds}
-        onClose={() => {}}
         isFullPage
       />
     </div>
