@@ -92,9 +92,8 @@ export default function LevelConfigPanel({
                   type="text"
                   value={drafts[config.level] ?? config.label}
                   onChange={e => handleChange(config.level, e.target.value)}
-                  disabled={isL0}
                   placeholder={`L${config.level} label`}
-                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-semibold focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-semibold focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
                 />
                 {!isL0 && count === 0 && (
                   <button
@@ -107,7 +106,6 @@ export default function LevelConfigPanel({
               </div>
               <div className="pl-9 text-[10px] text-gray-400">
                 {count} {count === 1 ? 'person' : 'people'}
-                {isL0 && ' · Tenant Admin (fixed)'}
               </div>
             </div>
           )

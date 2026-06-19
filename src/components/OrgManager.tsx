@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import {
@@ -13,8 +13,9 @@ import LevelConfigPanel from './LevelConfigPanel'
 import BudgetTab from './BudgetTab'
 import ChallengesTab from './ChallengesTab'
 import SimulatorTab from './SimulatorTab'
-import { Trophy, FlaskConical } from 'lucide-react'
-import type { Organization, Employee, OrgLevelConfig, EmployeeNode, ManagerBudget, ChallengeWithTiers } from '@/lib/types'
+import AdminMarketplaceTab from './AdminMarketplaceTab'
+import { Trophy, FlaskConical, ShoppingBag } from 'lucide-react'
+import type { Organization, Employee, OrgLevelConfig, EmployeeNode, ManagerBudget, ManagerBudgetTransaction, ChallengeWithTiers } from '@/lib/types'
 
 interface Props {
   organization: Organization
@@ -23,9 +24,11 @@ interface Props {
   orgId: string
   totalBudget: number | null
   initialManagerBudgets: ManagerBudget[]
+  initialManagerTransactions?: ManagerBudgetTransaction[]
   initialChallenges: ChallengeWithTiers[]
   initialCompletions: any[]
-  defaultView?: 'list' | 'chart' | 'budget' | 'challenges' | 'simulator'
+  defaultView?: 'list' | 'chart' | 'budget' | 'challenges' | 'simulator' | 'marketplace'
+  currentUserId?: string
 }
 
 const LEVEL_COLORS = [
@@ -503,9 +506,11 @@ export default function OrgManager({
   orgId,
   totalBudget,
   initialManagerBudgets,
+  initialManagerTransactions = [],
   initialChallenges,
   initialCompletions,
   defaultView = 'list',
+  currentUserId,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -513,6 +518,10 @@ export default function OrgManager({
 
   const [levelConfigs, setLevelConfigs] = useState<OrgLevelConfig[]>(initialLevelConfigs)
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees)
+  const [completions, setCompletions] = useState<any[]>(initialCompletions)
+
+  // Sync when server re-passes fresh data after router.refresh()
+  useEffect(() => { setCompletions(initialCompletions) }, [initialCompletions])
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set(initialEmployees.filter(e => e.level === 0).map(e => e.id))
   )
@@ -545,9 +554,7 @@ export default function OrgManager({
     const q = search.toLowerCase()
     return employees.filter(e =>
       e.full_name.toLowerCase().includes(q) ||
-      e.email?.toLowerCase().includes(q) ||
-      e.team_name?.toLowerCase().includes(q) ||
-      e.employee_id?.toLowerCase().includes(q)
+      e.email?.toLowerCase().includes(q)
     )
   }, [employees, search])
 
@@ -785,6 +792,16 @@ export default function OrgManager({
               >
                 <FlaskConical size={12} /> Simulator
               </button>
+              <button
+                onClick={() => router.push('/dashboard/admin/marketplace')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  activeView === 'marketplace'
+                    ? 'bg-white shadow text-indigo-700'
+                    : 'text-gray-400 hover:text-indigo-500'
+                }`}
+              >
+                <ShoppingBag size={12} /> Marketplace
+              </button>
             </div>
 
             {activeView === 'list' && (
@@ -813,7 +830,8 @@ export default function OrgManager({
             totalBudget={totalBudget}
             initialChallenges={initialChallenges}
             initialManagerBudgets={initialManagerBudgets}
-            initialCompletions={initialCompletions}
+            initialCompletions={completions}
+            currentUserId={currentUserId}
           />
         )}
 
@@ -824,8 +842,14 @@ export default function OrgManager({
             challenges={initialChallenges}
             employees={employees}
             levelConfigs={effectiveLevelConfigs}
-            initialCompletions={initialCompletions}
+            initialCompletions={completions}
+            onCompletionsChange={setCompletions}
           />
+        )}
+
+        {/* ── Marketplace view ── */}
+        {activeView === 'marketplace' && (
+          <AdminMarketplaceTab orgId={orgId} />
         )}
 
         {/* ── Budget view ── */}
@@ -836,6 +860,8 @@ export default function OrgManager({
             levelConfigs={effectiveLevelConfigs}
             totalBudget={totalBudget}
             initialAllocations={initialManagerBudgets}
+            initialTransactions={initialManagerTransactions}
+            orgChallenges={initialChallenges}
           />
         )}
 
@@ -864,23 +890,43 @@ export default function OrgManager({
               </div>
             ) : (
               <div className="space-y-1 max-w-3xl">
-                {tree.map(node => (
-                  <EmployeeCard
-                    key={node.id}
-                    node={node}
-                    levelConfigs={effectiveLevelConfigs}
-                    allEmployees={employees}
-                    expanded={expanded}
-                    onToggle={toggle}
-                    onEdit={emp => { setEditEmployee(emp); setModalError(null) }}
-                    onDelete={emp => { setDeleteEmployee(emp); setModalError(null) }}
-                    onAddChild={(managerId, defaultLevel) => {
-                      setAddModal({ managerId, defaultLevel })
-                      setModalError(null)
-                      setExpanded(prev => { const n = new Set(prev); n.add(managerId); return n })
-                    }}
-                  />
-                ))}
+                {search ? (
+                  filteredEmployees.map(employee => (
+                    <EmployeeCard
+                      key={employee.id}
+                      node={{ ...employee, children: [] }}
+                      levelConfigs={effectiveLevelConfigs}
+                      allEmployees={employees}
+                      expanded={expanded}
+                      onToggle={toggle}
+                      onEdit={emp => { setEditEmployee(emp); setModalError(null) }}
+                      onDelete={emp => { setDeleteEmployee(emp); setModalError(null) }}
+                      onAddChild={(managerId, defaultLevel) => {
+                        setAddModal({ managerId, defaultLevel })
+                        setModalError(null)
+                        setExpanded(prev => { const n = new Set(prev); n.add(managerId); return n })
+                      }}
+                    />
+                  ))
+                ) : (
+                  tree.map(node => (
+                    <EmployeeCard
+                      key={node.id}
+                      node={node}
+                      levelConfigs={effectiveLevelConfigs}
+                      allEmployees={employees}
+                      expanded={expanded}
+                      onToggle={toggle}
+                      onEdit={emp => { setEditEmployee(emp); setModalError(null) }}
+                      onDelete={emp => { setDeleteEmployee(emp); setModalError(null) }}
+                      onAddChild={(managerId, defaultLevel) => {
+                        setAddModal({ managerId, defaultLevel })
+                        setModalError(null)
+                        setExpanded(prev => { const n = new Set(prev); n.add(managerId); return n })
+                      }}
+                    />
+                  ))
+                )}
               </div>
             )}
           </div>

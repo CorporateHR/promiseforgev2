@@ -54,7 +54,7 @@ function ViewSwitcher({ profile, isManager, currentPath }: { profile: Profile | 
   // Determine base path for navigation
   const isTenantAdmin = role === 'tenant_admin'
   const adminPath = isTenantAdmin ? '/dashboard/admin' : '/dashboard'
-  const managerPath = isTenantAdmin ? '/dashboard/admin/manager' : '/dashboard/manager'
+  const managerPath = '/dashboard/manager'
   const employeePath = isTenantAdmin ? '/dashboard/admin/employee' : '/dashboard/employee'
 
   return (

@@ -2,8 +2,15 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import OrgDetailView from '@/components/OrgDetailView'
 
-export default async function OrgDetailPage({ params }: { params: Promise<{ orgId: string }> }) {
+export default async function OrgDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ orgId: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   const { orgId } = await params
+  const { tab: defaultTab } = await searchParams
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -20,14 +27,16 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ orgI
     { data: orgBudget },
     { data: challenges },
     { data: managerBudgets },
+    { data: budgetTransactions },
   ] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', orgId).single(),
     supabase.from('employees').select('*').eq('organization_id', orgId).order('level').order('full_name'),
     supabase.from('org_level_configs').select('*').eq('organization_id', orgId).order('level'),
     supabase.rpc('get_tenant_admin_emails', { p_org_id: orgId }),
     supabase.from('org_budgets').select('total_tokens').eq('organization_id', orgId).single(),
-    supabase.from('challenges').select('id, title, status, token_budget, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }),
+    supabase.from('challenges').select('id, title, status, token_budget, created_at, updated_at, manager_id').eq('organization_id', orgId).order('created_at', { ascending: false }),
     supabase.from('manager_budgets').select('manager_id, tokens').eq('organization_id', orgId),
+    supabase.from('org_budget_transactions').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }),
   ])
 
   const challengeIds = (challenges ?? []).map((c: { id: string }) => c.id)
@@ -48,6 +57,8 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ orgI
       initialChallenges={(challenges ?? []) as any[]}
       initialManagerBudgets={managerBudgets ?? []}
       initialCompletions={completions ?? []}
+      initialBudgetTransactions={(budgetTransactions ?? []) as any[]}
+      defaultTab={defaultTab}
     />
   )
 }

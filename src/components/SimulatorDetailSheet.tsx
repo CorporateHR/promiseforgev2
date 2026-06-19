@@ -135,7 +135,7 @@ export default function SimulatorDetailSheet({
             <div className="flex items-center gap-2 mt-1">
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                 challenge.status === 'active'  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                challenge.status === 'ended'   ? 'bg-slate-100 text-slate-500' :
+                (challenge.status === 'completed' || challenge.status === 'disabled') ? 'bg-slate-100 text-slate-500' :
                                                   'bg-gray-100 text-gray-500'
               }`}>
                 {challenge.status}

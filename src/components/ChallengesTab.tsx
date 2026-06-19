@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Trophy, Plus, X, CheckCircle2, AlertCircle, Loader2,
-  Calendar, Coins, ChevronRight, Users, Zap,
+  Calendar, Coins, ChevronRight, Users, Zap, Pencil, Filter, RefreshCw,
 } from 'lucide-react'
 import { publishChallenge, endChallenge, deleteChallenge } from '@/app/actions/challenges'
 import CreateChallengeSheet from './CreateChallengeSheet'
@@ -13,16 +13,18 @@ import type { Employee, OrgLevelConfig, ChallengeWithTiers, ManagerBudget, Chall
 function fmt(n: number) { return n.toLocaleString() }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const styles = {
-    draft:  'bg-gray-100 text-gray-500',
-    active: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    ended:  'bg-slate-100 text-slate-500',
-  }[status] ?? 'bg-gray-100 text-gray-500'
+const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
+  draft:     { cls: 'bg-gray-100 text-gray-500',                                    label: 'Draft' },
+  active:    { cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',     label: 'Active' },
+  completed: { cls: 'bg-emerald-100 text-emerald-800 border border-emerald-400',    label: 'Completed' },
+  disabled:  { cls: 'bg-slate-100 text-slate-400 border border-slate-200',          label: 'Disabled' },
+}
 
+function StatusBadge({ status }: { status: string }) {
+  const { cls, label } = STATUS_BADGE[status]
   return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${styles}`}>
-      {status}
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}>
+      {label}
     </span>
   )
 }
@@ -34,40 +36,47 @@ function ChallengeCard({
   totalEmployees,
   onAction,
   loading,
+  isOwned,
 }: {
   challenge: ChallengeWithTiers
   completedCount: number
   totalEmployees: number
-  onAction: (action: 'publish' | 'end' | 'delete' | 'view') => void
+  onAction: (action: 'publish' | 'end' | 'delete' | 'edit' | 'view') => void
   loading: boolean
+  isOwned?: boolean
 }) {
   const progressPct = totalEmployees > 0 ? Math.round((completedCount / totalEmployees) * 100) : 0
+  const ds = challenge.status
 
   const individualTier = challenge.tiers.find(t => t.is_individual)
   const enabledGroupTiers = challenge.tiers.filter(t => !t.is_individual && t.enabled)
   const maxPerEmployee = (individualTier?.base_tokens ?? 0) + enabledGroupTiers.reduce((s, t) => s + t.bonus_tokens, 0)
 
+  const accentLine = { active: 'bg-emerald-400', draft: 'bg-gray-200', completed: 'bg-emerald-500', disabled: 'bg-slate-200' }[ds]
+  const iconBg     = { active: 'bg-emerald-50',  draft: 'bg-gray-50',  completed: 'bg-emerald-100', disabled: 'bg-gray-50'  }[ds]
+  const iconColor  = { active: 'text-emerald-600', draft: 'text-gray-400', completed: 'text-emerald-700', disabled: 'text-gray-300' }[ds]
+  const barColor   = { active: 'bg-emerald-500', draft: 'bg-gray-300', completed: 'bg-emerald-500', disabled: 'bg-slate-300' }[ds]
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      {/* Top accent line per status */}
-      <div className={`h-1 w-full ${
-        challenge.status === 'active' ? 'bg-emerald-400' :
-        challenge.status === 'ended'  ? 'bg-slate-300' :
-                                         'bg-gray-200'
-      }`} />
+    <div className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden ${ds === 'disabled' ? 'border-gray-100 opacity-75' : 'border-gray-100'}`}>
+      {/* Top accent line */}
+      <div className={`h-1 w-full ${accentLine}`} />
 
       <div className="p-4">
         {/* Header row */}
         <div className="flex items-start gap-3 mb-3">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            challenge.status === 'active' ? 'bg-emerald-50' : 'bg-gray-50'
-          }`}>
-            <Trophy size={16} className={challenge.status === 'active' ? 'text-emerald-600' : 'text-gray-400'} />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+            <Trophy size={16} className={iconColor} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-bold text-gray-900 truncate">{challenge.title}</p>
-              <StatusBadge status={challenge.status} />
+              <p className={`text-sm font-bold truncate ${ds === 'disabled' ? 'text-gray-500' : 'text-gray-900'}`}>{challenge.title}</p>
+              <StatusBadge status={ds} />
+              {isOwned && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 flex-shrink-0">
+                  My challenge
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{challenge.description}</p>
           </div>
@@ -96,7 +105,7 @@ function ChallengeCard({
         </div>
 
         {/* Progress (active + ended) */}
-        {challenge.status !== 'draft' && (
+        {ds !== 'draft' && (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="flex items-center gap-1 text-[11px] text-gray-500">
@@ -106,7 +115,7 @@ function ChallengeCard({
             </div>
             <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${challenge.status === 'ended' ? 'bg-slate-400' : 'bg-emerald-500'}`}
+                className={`h-full rounded-full transition-all ${barColor}`}
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -120,7 +129,7 @@ function ChallengeCard({
             .sort((a, b) => a.level - b.level)
             .map(t => (
               <span key={t.level} className="text-[9px] font-bold text-gray-500 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded-md">
-                L{t.level} {t.is_individual ? `${fmt(t.base_tokens)}tk` : `+${fmt(t.bonus_tokens)}@${t.threshold_pct}%`}
+                L{t.level} {t.is_individual ? `${fmt(t.base_tokens)}tokens` : `+${fmt(t.bonus_tokens)}@${t.threshold_pct}%`}
               </span>
             ))}
         </div>
@@ -132,14 +141,24 @@ function ChallengeCard({
               <button
                 onClick={() => onAction('publish')}
                 disabled={loading}
+                title="Publish challenge"
                 className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-bold transition-colors disabled:opacity-50"
               >
                 {loading ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
                 Publish
               </button>
               <button
+                onClick={() => onAction('edit')}
+                disabled={loading}
+                title="Edit challenge"
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+              >
+                <Pencil size={13} />
+              </button>
+              <button
                 onClick={() => onAction('delete')}
                 disabled={loading}
+                title="Delete challenge"
                 className="px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 text-xs font-bold transition-colors disabled:opacity-50"
               >
                 Delete
@@ -150,6 +169,7 @@ function ChallengeCard({
             <>
               <button
                 onClick={() => onAction('view')}
+                title="View progress"
                 className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors"
               >
                 <ChevronRight size={11} /> View Progress
@@ -157,15 +177,17 @@ function ChallengeCard({
               <button
                 onClick={() => onAction('end')}
                 disabled={loading}
+                title="End challenge"
                 className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs font-bold transition-colors disabled:opacity-50"
               >
                 {loading ? <Loader2 size={11} className="animate-spin" /> : 'End'}
               </button>
             </>
           )}
-          {challenge.status === 'ended' && (
+          {(challenge.status === 'completed' || challenge.status === 'disabled') && (
             <button
               onClick={() => onAction('view')}
+              title="View results"
               className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 text-xs font-bold transition-colors border border-gray-200"
             >
               <ChevronRight size={11} /> View Results
@@ -207,19 +229,39 @@ interface Props {
   initialChallenges: ChallengeWithTiers[]
   initialManagerBudgets: ManagerBudget[]
   initialCompletions: ChallengeCompletion[]
+  currentUserId?: string
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+type SubTab = 'mine' | 'team' | 'all'
+type StatusFilter = 'all' | 'active' | 'draft' | 'completed' | 'disabled'
+
 export default function ChallengesTab({
   orgId, employees, levelConfigs, totalBudget,
   initialChallenges, initialManagerBudgets, initialCompletions,
+  currentUserId,
 }: Props) {
   const router = useRouter()
   const [challenges, setChallenges] = useState(initialChallenges)
   const [completions, setCompletions] = useState(initialCompletions)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [editingChallenge, setEditingChallenge] = useState<ChallengeWithTiers | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  // Sync when server re-passes fresh data (after router.refresh())
+  useEffect(() => { setCompletions(initialCompletions) }, [initialCompletions])
+  useEffect(() => { setChallenges(initialChallenges) }, [initialChallenges])
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [subTab, setSubTab] = useState<SubTab>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    await new Promise(r => setTimeout(r, 800))
+    setRefreshing(false)
+  }
 
   // Build a map: challengeId → Set of completed employeeIds
   const completionMap = useMemo(() => {
@@ -237,7 +279,7 @@ export default function ChallengesTab({
     if (totalBudget === null) return 0
     const managerUsed = initialManagerBudgets.reduce((s, b) => s + b.tokens, 0)
     const challengeUsed = challenges
-      .filter(c => c.status !== 'ended')
+      .filter(c => c.status === 'draft' || c.status === 'active')
       .reduce((s, c) => s + c.token_budget, 0)
     return Math.max(0, totalBudget - managerUsed - challengeUsed)
   }, [totalBudget, initialManagerBudgets, challenges])
@@ -249,10 +291,14 @@ export default function ChallengesTab({
 
   async function handleAction(
     challenge: ChallengeWithTiers,
-    action: 'publish' | 'end' | 'delete' | 'view',
+    action: 'publish' | 'end' | 'delete' | 'edit' | 'view',
   ) {
     if (action === 'view') {
-      router.push(`/dashboard/admin/list?challengeId=${challenge.id}`)
+      router.push(`/dashboard/admin/challenges/${challenge.id}`)
+      return
+    }
+    if (action === 'edit') {
+      setEditingChallenge(challenge)
       return
     }
 
@@ -271,7 +317,8 @@ export default function ChallengesTab({
       setChallenges(prev => prev.filter(c => c.id !== challenge.id))
       showToast('success', 'Challenge deleted')
     } else {
-      const newStatus = action === 'publish' ? 'active' : 'ended'
+      const newStatus = action === 'publish' ? 'active'
+        : ('newStatus' in result ? result.newStatus : 'disabled')
       setChallenges(prev => prev.map(c =>
         c.id === challenge.id ? { ...c, status: newStatus as any } : c
       ))
@@ -285,63 +332,46 @@ export default function ChallengesTab({
     showToast('success', 'Challenge created as draft')
   }
 
-  const active = challenges.filter(c => c.status === 'active').length
-  const draft  = challenges.filter(c => c.status === 'draft').length
+  function handleUpdated(c: ChallengeWithTiers) {
+    setChallenges(prev => prev.map(ch => ch.id === c.id ? c : ch))
+    setEditingChallenge(null)
+    showToast('success', 'Challenge updated')
+  }
+
+  const displayChallenges = useMemo(() => {
+    let list = challenges
+    if (subTab === 'mine') list = list.filter(c => currentUserId && c.created_by === currentUserId)
+    else if (subTab === 'team') list = list.filter(c => !currentUserId || c.created_by !== currentUserId)
+    if (statusFilter !== 'all') {
+      list = list.filter(c => c.status === statusFilter)
+    }
+    return list
+  }, [challenges, subTab, statusFilter, currentUserId])
+
+  const active    = displayChallenges.filter(c => c.status === 'active').length
+  const draft     = displayChallenges.filter(c => c.status === 'draft').length
+  const completed = challenges.filter(c => c.status === 'completed').length
+  const disabled  = challenges.filter(c => c.status === 'disabled').length
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative">
 
-      {/* ── Challenge list (hidden when creating) ── */}
-      {!sheetOpen && (
-        <>
-          {/* Toolbar */}
-          <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <div>
-              <p className="text-sm font-bold text-gray-900">Challenges</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {active} active · {draft} draft · {challenges.length} total
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {totalBudget !== null && (
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg">
-                  <Coins size={12} className="text-amber-500" />
-                  {fmt(availableTokens)} available
-                </div>
-              )}
-              <button
-                onClick={() => setSheetOpen(true)}
-                className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
-              >
-                <Plus size={14} /> New Challenge
-              </button>
-            </div>
-          </div>
-
-          {/* List */}
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            {challenges.length === 0 ? (
-              <EmptyState onNew={() => setSheetOpen(true)} />
-            ) : (
-              <div className="grid grid-cols-1 gap-3 max-w-3xl mx-auto">
-                {challenges.map(c => (
-                  <ChallengeCard
-                    key={c.id}
-                    challenge={c}
-                    completedCount={completionMap.get(c.id)?.size ?? 0}
-                    totalEmployees={employees.length}
-                    onAction={action => handleAction(c, action)}
-                    loading={actionLoading === c.id}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </>
+      {/* ── Full-page edit form ── */}
+      {editingChallenge && (
+        <CreateChallengeSheet
+          orgId={orgId}
+          levelConfigs={levelConfigs}
+          totalEmployees={employees.length}
+          availableTokens={availableTokens + editingChallenge.token_budget}
+          initialChallenge={editingChallenge}
+          onCreated={handleCreated}
+          onUpdated={handleUpdated}
+          onClose={() => setEditingChallenge(null)}
+        />
       )}
 
       {/* ── Full-page create form ── */}
-      {sheetOpen && (
+      {!editingChallenge && sheetOpen && (
         <CreateChallengeSheet
           orgId={orgId}
           levelConfigs={levelConfigs}
@@ -350,6 +380,129 @@ export default function ChallengesTab({
           onCreated={handleCreated}
           onClose={() => setSheetOpen(false)}
         />
+      )}
+
+      {/* ── Challenge list (hidden when creating or editing) ── */}
+      {!sheetOpen && !editingChallenge && (
+        <>
+          {/* Toolbar */}
+          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-900">Challenges</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {active} active · {draft} draft · {displayChallenges.length} shown
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {totalBudget !== null && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg">
+                    <Coins size={12} className="text-amber-500" />
+                    {fmt(availableTokens)} available
+                  </div>
+                )}
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  title="Refresh completion data"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-white border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-xl transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setSheetOpen(true)}
+                  className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
+                >
+                  <Plus size={14} /> New Challenge
+                </button>
+              </div>
+            </div>
+            {/* Filters row */}
+            <div className="flex items-center gap-2">
+              {/* Ownership tabs */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                {([['all', 'All'], ['mine', 'My Challenges'], ['team', 'Team Challenges']] as [SubTab, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setSubTab(key)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                      subTab === key ? 'bg-white shadow text-gray-900' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {label}
+                    {key !== 'all' && (
+                      <span className={`ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                        subTab === key ? 'bg-gray-100 text-gray-600' : 'bg-white/60 text-gray-400'
+                      }`}>
+                        {key === 'mine'
+                          ? challenges.filter(c => currentUserId && c.created_by === currentUserId).length
+                          : challenges.filter(c => !currentUserId || c.created_by !== currentUserId).length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div className="w-px h-5 bg-gray-200" />
+
+              {/* Status dropdown */}
+              <div className="relative flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-xs font-semibold text-gray-600 cursor-pointer hover:border-gray-300 transition-colors">
+                <Filter size={11} className="text-gray-400 flex-shrink-0" />
+                <span className="text-gray-400 font-normal">Status:</span>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value as StatusFilter)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active ({challenges.filter(c => c.status === 'active').length})</option>
+                  <option value="draft">Draft ({challenges.filter(c => c.status === 'draft').length})</option>
+                  <option value="completed">Completed ({completed})</option>
+                  <option value="disabled">Disabled ({disabled})</option>
+                </select>
+                <span className={statusFilter === 'all' ? 'text-gray-600' : 'text-indigo-600 font-bold'}>
+                  {statusFilter === 'all' ? 'All' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+                </span>
+                <ChevronRight size={11} className="text-gray-400 rotate-90 flex-shrink-0" />
+              </div>
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {displayChallenges.length === 0 ? (
+              subTab === 'all'
+                ? <EmptyState onNew={() => setSheetOpen(true)} />
+                : (
+                  <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+                    <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                      <Trophy size={28} className="text-gray-300" />
+                    </div>
+                    <p className="text-sm font-bold text-gray-700">No challenges here</p>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      {subTab === 'mine' ? 'You haven\'t created any challenges yet.' : 'No challenges created by your team yet.'}
+                    </p>
+                  </div>
+                )
+            ) : (
+              <div className="grid grid-cols-1 gap-3 max-w-3xl mx-auto">
+                {displayChallenges.map(c => (
+                  <ChallengeCard
+                    key={c.id}
+                    challenge={c}
+                    completedCount={completionMap.get(c.id)?.size ?? 0}
+                    totalEmployees={employees.length}
+                    onAction={action => handleAction(c, action)}
+                    loading={actionLoading === c.id}
+                    isOwned={!!(currentUserId && c.created_by === currentUserId)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Toast */}

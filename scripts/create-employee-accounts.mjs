@@ -6,19 +6,24 @@
  * as role='employee'.
  *
  * Usage:
- *   SUPABASE_SERVICE_ROLE_KEY=<key> node scripts/create-employee-accounts.mjs
- *   SUPABASE_SERVICE_ROLE_KEY=<key> node scripts/create-employee-accounts.mjs --org "Ishaan Corp"
- *   SUPABASE_SERVICE_ROLE_KEY=<key> node scripts/create-employee-accounts.mjs --password "MyPass@123"
+ *   # Dev (uses .env.local keys automatically):
+ *   node --env-file=.env.local scripts/create-employee-accounts.mjs
+ *   node --env-file=.env.local scripts/create-employee-accounts.mjs --org "Ishaan Corp"
+ *   node --env-file=.env.local scripts/create-employee-accounts.mjs --password "MyPass@123"
  *
- * The SUPABASE_SERVICE_ROLE_KEY must be the service_role key (not anon).
- * Find it in: Supabase Dashboard → Project Settings → API → service_role secret
+ *   # Production (pass keys explicitly):
+ *   SUPABASE_URL=https://ryxvkfbhopclyvarctvz.supabase.co SUPABASE_SERVICE_ROLE_KEY=<prod-key> node scripts/create-employee-accounts.mjs
  */
 
 import { createClient } from '@supabase/supabase-js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL     = 'https://ryxvkfbhopclyvarctvz.supabase.co'
+// Override with SUPABASE_URL env var to target dev:
+//   SUPABASE_URL=https://zdcoiucknxmzuhgspfvk.supabase.co SUPABASE_SERVICE_ROLE_KEY=<dev-key> node scripts/create-employee-accounts.mjs
+// Production (default — no env var needed):
+//   SUPABASE_SERVICE_ROLE_KEY=<prod-key> node scripts/create-employee-accounts.mjs
+const SUPABASE_URL     = process.env.SUPABASE_URL ?? 'https://ryxvkfbhopclyvarctvz.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5eHZrZmJob3BjbHl2YXJjdHZ6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODA5NzIxNCwiZXhwIjoyMDkzNjczMjE0fQ.mQKvTNOigvTwQqaRxtDaUiaPov3qVlF3pOerqldk6UE'
 

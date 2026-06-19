@@ -49,6 +49,7 @@ export default async function AdminListPage({
   }
 
   const completedEmployeeIds = new Set((completionsRaw ?? []).map((c: any) => c.employee_id))
+  const isCreator = (challengeRaw as any).created_by === user.id
 
   return (
     <AdminChallengeDetailView
@@ -56,6 +57,7 @@ export default async function AdminListPage({
       levelConfigs={levelConfigs ?? []}
       allEmployees={employees ?? []}
       initialCompletedIds={completedEmployeeIds}
+      isCreator={isCreator}
     />
   )
 }

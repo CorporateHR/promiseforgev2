@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { X, ChevronRight, AlertCircle, Loader2, Trophy, Calendar, FileText } from 'lucide-react'
-import { createChallenge } from '@/app/actions/challenges'
+import { createChallenge, createManagerChallenge, updateChallenge } from '@/app/actions/challenges'
 import type { OrgLevelConfig, TierDraft, ChallengeWithTiers } from '@/lib/types'
 
 // ─── Palette (matches rest of app) ───────────────────────────────────────────
@@ -33,9 +33,15 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button
       type="button"
       onClick={() => onChange(!on)}
-      className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-indigo-600' : 'bg-gray-200'}`}
+      className={`relative inline-flex w-11 h-6 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 flex-shrink-0 ${
+        on ? 'bg-indigo-600' : 'bg-gray-200'
+      }`}
     >
-      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      <span
+        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
+          on ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
     </button>
   )
 }
@@ -55,7 +61,10 @@ interface Props {
   levelConfigs: OrgLevelConfig[]
   totalEmployees: number
   availableTokens: number
+  mode?: 'admin' | 'manager'
+  initialChallenge?: ChallengeWithTiers
   onCreated: (challenge: ChallengeWithTiers) => void
+  onUpdated?: (challenge: ChallengeWithTiers) => void
   onClose: () => void
 }
 
@@ -64,19 +73,31 @@ const STEPS: Step[] = ['basics', 'tiers', 'review']
 const STEP_LABELS = { basics: 'Basics', tiers: 'Tiers', review: 'Review' }
 
 export default function CreateChallengeSheet({
-  orgId, levelConfigs, totalEmployees, availableTokens, onCreated, onClose,
+  orgId, levelConfigs, totalEmployees, availableTokens, mode = 'admin',
+  initialChallenge, onCreated, onUpdated, onClose,
 }: Props) {
+  const isEditing = !!initialChallenge
   const [step, setStep] = useState<Step>('basics')
 
-  // Basics
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [dueDate, setDueDate] = useState('')
+  // Basics — pre-populate from initialChallenge when editing
+  const [title, setTitle] = useState(initialChallenge?.title ?? '')
+  const [description, setDescription] = useState(initialChallenge?.description ?? '')
+  const [startDate, setStartDate] = useState(initialChallenge?.start_date ?? '')
+  const [dueDate, setDueDate] = useState(initialChallenge?.due_date ?? '')
 
-  // Tiers — initialised from levelConfigs
-  // Group tiers default to 100% threshold and 50 bonus tokens (admin can adjust before saving)
+  // Tiers — pre-populate from initialChallenge when editing, else initialise from levelConfigs
   const [tiers, setTiers] = useState<TierDraft[]>(() => {
+    if (initialChallenge?.tiers.length) {
+      return initialChallenge.tiers.map(t => ({
+        level: t.level,
+        label: t.label,
+        is_individual: t.is_individual,
+        enabled: t.enabled,
+        threshold_pct: t.threshold_pct ?? 100,
+        base_tokens: t.base_tokens,
+        bonus_tokens: t.bonus_tokens,
+      }))
+    }
     const sorted = [...levelConfigs].sort((a, b) => a.level - b.level)
     const maxLevelValue = sorted[sorted.length - 1]?.level
     return levelConfigs.map(c => ({
@@ -85,7 +106,7 @@ export default function CreateChallengeSheet({
       is_individual: c.level === maxLevelValue,
       enabled: true,
       threshold_pct: c.level === maxLevelValue ? 0 : 100,
-      base_tokens: 0,
+      base_tokens: c.level === maxLevelValue ? 50 : 0,
       bonus_tokens: c.level === maxLevelValue ? 0 : 50,
     }))
   })
@@ -122,7 +143,8 @@ export default function CreateChallengeSheet({
     setSaving(true)
     setError(null)
 
-    const result = await createChallenge(orgId, {
+    const action = mode === 'manager' ? createManagerChallenge : createChallenge
+    const result = await action(orgId, {
       title: title.trim(),
       description: description.trim(),
       start_date: startDate || null,
@@ -134,7 +156,6 @@ export default function CreateChallengeSheet({
 
     if ('error' in result) { setError(result.error); return }
 
-    // Build the ChallengeWithTiers object optimistically for the parent
     const now = new Date().toISOString()
     const created: ChallengeWithTiers = {
       id: result.challengeId,
@@ -146,6 +167,7 @@ export default function CreateChallengeSheet({
       status: 'draft',
       token_budget: worstCase,
       created_by: null,
+      manager_id: null,
       created_at: now,
       updated_at: now,
       tiers: tiers.map((t, i) => ({
@@ -166,6 +188,50 @@ export default function CreateChallengeSheet({
     onCreated(created)
   }
 
+  async function handleUpdate() {
+    if (isOverBudget || !initialChallenge) return
+    setSaving(true)
+    setError(null)
+
+    const result = await updateChallenge(initialChallenge.id, {
+      title: title.trim(),
+      description: description.trim(),
+      start_date: startDate || null,
+      due_date: dueDate || null,
+      tiers,
+    })
+
+    setSaving(false)
+
+    if ('error' in result) { setError(result.error); return }
+
+    const now = new Date().toISOString()
+    const updated: ChallengeWithTiers = {
+      ...initialChallenge,
+      title: title.trim(),
+      description: description.trim(),
+      start_date: startDate || null,
+      due_date: dueDate || null,
+      token_budget: result.token_budget,
+      updated_at: now,
+      tiers: tiers.map((t, i) => ({
+        id: initialChallenge.tiers.find(ct => ct.level === t.level)?.id ?? `temp-${i}`,
+        challenge_id: initialChallenge.id,
+        level: t.level,
+        label: t.label,
+        is_individual: t.is_individual,
+        enabled: t.enabled,
+        threshold_pct: t.is_individual ? null : t.threshold_pct,
+        base_tokens: t.base_tokens,
+        bonus_tokens: t.bonus_tokens,
+        created_at: initialChallenge.tiers.find(ct => ct.level === t.level)?.created_at ?? now,
+        updated_at: now,
+      })),
+    }
+
+    onUpdated?.(updated)
+  }
+
   const sortedTiers = [...tiers].sort((a, b) => a.level - b.level)
 
   return (
@@ -179,7 +245,7 @@ export default function CreateChallengeSheet({
               <Trophy size={15} className="text-indigo-600" />
             </div>
             <div>
-              <p className="text-sm font-bold text-gray-900">New Challenge</p>
+              <p className="text-sm font-bold text-gray-900">{isEditing ? 'Edit Challenge' : 'New Challenge'}</p>
               <p className="text-[11px] text-gray-400">Step {stepIndex + 1} of {STEPS.length}</p>
             </div>
           </div>
@@ -267,7 +333,7 @@ export default function CreateChallengeSheet({
             <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
               <p className="text-xs font-semibold text-blue-700">Participants</p>
               <p className="text-xs text-blue-500 mt-0.5">
-                All <strong>{totalEmployees}</strong> employees in your organisation will be included automatically.
+                All <strong>{totalEmployees}</strong> employees in your {mode === 'manager' ? 'team' : 'organisation'} will be included automatically.
               </p>
             </div>
           </div>
@@ -308,51 +374,77 @@ export default function CreateChallengeSheet({
                       </p>
                     </div>
                     {!tier.is_individual && (
-                      <Toggle on={tier.enabled} onChange={v => updateTier(tier.level, { enabled: v })} />
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-[10px] font-semibold text-gray-400">
+                          {tier.enabled ? 'On' : 'Off'}
+                        </span>
+                        <Toggle on={tier.enabled} onChange={v => updateTier(tier.level, { enabled: v })} />
+                      </div>
                     )}
                     {tier.is_individual && (
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Always on</span>
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full flex-shrink-0">Always on</span>
                     )}
                   </div>
 
                   {/* Tier inputs */}
                   {tier.enabled && (
-                    <div className={`px-4 pb-4 ${tier.is_individual ? '' : 'grid grid-cols-2 gap-3'}`}>
-                      {!tier.is_individual && (
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-500 mb-1">Threshold %</label>
-                          <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={tier.threshold_pct}
-                              onChange={e => updateTier(tier.level, { threshold_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })}
-                              className="flex-1 bg-transparent text-sm font-semibold text-gray-800 outline-none text-right tabular-nums"
-                            />
-                            <span className="text-xs text-gray-400">%</span>
+                    <div className="px-4 pb-4 grid grid-cols-2 gap-3">
+                      {tier.is_individual ? (
+                        // Individual tier: label column (empty) + input column
+                        <>
+                          <div />
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-500 mb-1">Base Tokens</label>
+                            <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
+                              <input
+                                type="number"
+                                min="0"
+                                value={tier.base_tokens}
+                                onChange={e => {
+                                  const v = Math.max(0, parseInt(e.target.value) || 0)
+                                  updateTier(tier.level, { base_tokens: v })
+                                }}
+                                className="flex-1 bg-transparent text-sm font-semibold text-gray-800 outline-none text-right tabular-nums min-w-0"
+                              />
+                              <span className="text-xs text-gray-400 flex-shrink-0">tokens</span>
+                            </div>
                           </div>
-                        </div>
+                        </>
+                      ) : (
+                        // Group tier: threshold + bonus side by side
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-500 mb-1">Threshold %</label>
+                            <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={tier.threshold_pct}
+                                onChange={e => updateTier(tier.level, { threshold_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) })}
+                                className="flex-1 bg-transparent text-sm font-semibold text-gray-800 outline-none text-right tabular-nums min-w-0"
+                              />
+                              <span className="text-xs text-gray-400 flex-shrink-0">%</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-500 mb-1">Bonus Tokens</label>
+                            <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
+                              <input
+                                type="number"
+                                min="0"
+                                value={tier.bonus_tokens}
+                                onChange={e => {
+                                  const v = Math.max(0, parseInt(e.target.value) || 0)
+                                  updateTier(tier.level, { bonus_tokens: v })
+                                }}
+                                className="flex-1 bg-transparent text-sm font-semibold text-gray-800 outline-none text-right tabular-nums min-w-0"
+                              />
+                              <span className="text-xs text-gray-400 flex-shrink-0">tokens</span>
+                            </div>
+                          </div>
+                        </>
                       )}
-
-                      <div className={tier.is_individual ? 'max-w-[200px]' : ''}>
-                        <label className="block text-[11px] font-semibold text-gray-500 mb-1">
-                          {tier.is_individual ? 'Base Tokens' : 'Bonus Tokens'}
-                        </label>
-                        <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
-                          <input
-                            type="number"
-                            min="0"
-                            value={tier.is_individual ? tier.base_tokens : tier.bonus_tokens}
-                            onChange={e => {
-                              const v = Math.max(0, parseInt(e.target.value) || 0)
-                              updateTier(tier.level, tier.is_individual ? { base_tokens: v } : { bonus_tokens: v })
-                            }}
-                            className="flex-1 bg-transparent text-sm font-semibold text-gray-800 outline-none text-right tabular-nums"
-                          />
-                          <span className="text-xs text-gray-400">tk</span>
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -403,7 +495,7 @@ export default function CreateChallengeSheet({
               )}
               <div className="text-xs text-gray-400">
                 <FileText size={11} className="inline mr-1" />
-                {totalEmployees} participants (whole organisation)
+                {totalEmployees} participants ({mode === 'manager' ? 'your team' : 'whole organisation'})
               </div>
             </div>
 
@@ -516,13 +608,13 @@ export default function CreateChallengeSheet({
                 </button>
               ) : (
                 <button
-                  onClick={handleCreate}
+                  onClick={isEditing ? handleUpdate : handleCreate}
                   disabled={saving || isOverBudget}
                   className="px-8 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {saving
-                    ? <><Loader2 size={14} className="animate-spin" /> Creating…</>
-                    : <><Trophy size={14} /> Create Challenge</>}
+                    ? <><Loader2 size={14} className="animate-spin" /> {isEditing ? 'Saving…' : 'Creating…'}</>
+                    : <><Trophy size={14} /> {isEditing ? 'Save Changes' : 'Create Challenge'}</>}
                 </button>
               )}
             </>

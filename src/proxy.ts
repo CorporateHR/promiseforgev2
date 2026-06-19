@@ -29,8 +29,8 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
-  // Redirect unauthenticated users to login (except auth routes)
-  if (!user && !pathname.startsWith('/login') && !pathname.startsWith('/auth')) {
+  // Redirect unauthenticated users to login (except public routes)
+  if (!user && !pathname.startsWith('/login') && !pathname.startsWith('/auth') && pathname !== '/') {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

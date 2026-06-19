@@ -6,67 +6,141 @@ import { assignTenantAdmin } from '@/app/actions/org'
 import { setOrgBudget } from '@/app/actions/budget'
 import OrgChartView from './OrgChartView'
 import EmployeeUploadModal from './EmployeeUploadModal'
-import { ArrowLeft, Users, Upload, ShieldCheck, X, Search, Loader2, Coins } from 'lucide-react'
-import type { Organization, Employee, OrgLevelConfig } from '@/lib/types'
+import { ArrowLeft, Users, Upload, ShieldCheck, X, Search, Loader2, Coins, ArrowDownLeft, ArrowUpRight, CheckCircle2 as CheckCircle, Trophy, TrendingDown, RefreshCw } from 'lucide-react'
+import type { Organization, Employee, OrgLevelConfig, OrgBudgetTransaction } from '@/lib/types'
 
-// ─── Set Budget Modal ─────────────────────────────────────────────────────────
-function SetBudgetModal({ orgId, currentBudget, onSaved, onClose }: {
+// ─── Add Budget Modal ─────────────────────────────────────────────────────────
+function SetBudgetModal({ orgId, currentBudget, availableBudget, onSaved, onClose }: {
   orgId: string
   currentBudget: number | null
+  availableBudget: number | null
   onSaved: (tokens: number) => void
   onClose: () => void
 }) {
-  const [value, setValue] = useState(currentBudget?.toString() ?? '')
+  const [value, setValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const delta = value === '' || value === '-' ? null : parseInt(value, 10)
+  const current = currentBudget ?? 0
+  const newTotal = delta !== null && !isNaN(delta) ? current + delta : null
+  const newAvailable = delta !== null && !isNaN(delta) && availableBudget !== null
+    ? availableBudget + delta
+    : null
+
+  const isOverDeducting = newAvailable !== null && newAvailable < 0
+
   async function handleSave() {
-    const tokens = parseInt(value)
-    if (!tokens || tokens <= 0) { setError('Enter a valid number of tokens'); return }
+    if (delta === null || isNaN(delta) || delta === 0) {
+      setError('Enter a non-zero amount to add or deduct')
+      return
+    }
+    if (newTotal !== null && newTotal < 0) {
+      setError(`Cannot deduct more than the current budget (${current.toLocaleString()} tokens)`)
+      return
+    }
+    if (isOverDeducting) {
+      setError(`Deduction exceeds available balance — maximum deductible is ${availableBudget?.toLocaleString()} tokens`)
+      return
+    }
     setError(null)
     setLoading(true)
-    const result = await setOrgBudget(orgId, tokens)
+    const result = await setOrgBudget(orgId, newTotal!)
     setLoading(false)
     if (result.error) { setError(result.error); return }
-    onSaved(tokens)
+    onSaved(newTotal!)
     onClose()
   }
+
+  const isDeduction = delta !== null && !isNaN(delta) && delta < 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 className="font-bold text-gray-900">Set Token Budget</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Total tokens the tenant admin can allocate</p>
+            <h2 className="font-bold text-gray-900">Add Budget</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Add tokens or enter a negative value to deduct</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={18} />
           </button>
         </div>
         <div className="px-6 py-5 space-y-4">
+          {/* Budget info chips */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
+              <span className="text-xs text-gray-500">Available</span>
+              <span className={`text-sm font-bold tabular-nums ${
+                availableBudget !== null && availableBudget < 0 ? 'text-red-600' : 'text-gray-800'
+              }`}>
+                {availableBudget !== null ? availableBudget.toLocaleString() : '—'} tokens
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-1">
+              <span className="text-[11px] text-gray-400">Total budget</span>
+              <span className="text-[11px] text-gray-400 tabular-nums">
+                {currentBudget !== null ? currentBudget.toLocaleString() : '—'} tokens
+              </span>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              Total Tokens <span className="text-red-500">*</span>
+              Amount <span className="text-red-500">*</span>
+              <span className="ml-1 font-normal text-gray-400">(use − to deduct)</span>
             </label>
-            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus-within:bg-white focus-within:border-blue-400 transition-colors">
-              <Coins size={14} className="text-gray-400 flex-shrink-0" />
+            <div className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 transition-colors focus-within:bg-white ${
+              isDeduction
+                ? 'border-red-300 bg-red-50 focus-within:border-red-400'
+                : 'border-gray-200 bg-gray-50 focus-within:border-blue-400'
+            }`}>
+              <Coins size={14} className={isDeduction ? 'text-red-400 flex-shrink-0' : 'text-gray-400 flex-shrink-0'} />
               <input
                 autoFocus
                 type="number"
-                min="1"
                 value={value}
-                onChange={e => setValue(e.target.value)}
-                placeholder="e.g. 10000"
+                onChange={e => { setValue(e.target.value); setError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+                placeholder="e.g. 50000 or -10000"
                 className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
               />
-              <span className="text-xs text-gray-400 flex-shrink-0">tokens</span>
+              <span className={`text-xs flex-shrink-0 ${isDeduction ? 'text-red-400' : 'text-gray-400'}`}>tokens</span>
             </div>
-            {currentBudget && (
-              <p className="text-xs text-gray-400 mt-1">Current budget: {currentBudget.toLocaleString()} tokens</p>
-            )}
           </div>
-          {error && (
+
+          {/* Preview */}
+          {newAvailable !== null && !isNaN(newAvailable) && (
+            <div className="space-y-1.5">
+              <div className={`flex items-center justify-between rounded-lg px-3 py-2.5 border ${
+                newAvailable < 0
+                  ? 'bg-red-50 border-red-200'
+                  : isDeduction
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-emerald-50 border-emerald-200'
+              }`}>
+                <span className={`text-xs font-semibold ${newAvailable < 0 ? 'text-red-600' : isDeduction ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  New available
+                </span>
+                <span className={`text-sm font-bold tabular-nums ${newAvailable < 0 ? 'text-red-600' : isDeduction ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {newAvailable.toLocaleString()} tokens
+                </span>
+              </div>
+              {newTotal !== null && (
+                <div className="flex items-center justify-between px-3 py-1">
+                  <span className="text-[11px] text-gray-400">New total budget</span>
+                  <span className="text-[11px] text-gray-400 tabular-nums">{newTotal.toLocaleString()} tokens</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isOverDeducting && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              Cannot go below available balance — max deductible is {availableBudget?.toLocaleString()} tokens
+            </div>
+          )}
+          {!isOverDeducting && error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>
           )}
           <div className="flex gap-2">
@@ -74,11 +148,11 @@ function SetBudgetModal({ orgId, currentBudget, onSaved, onClose }: {
               className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={loading || !value}
+            <button onClick={handleSave} disabled={loading || !value || value === '-' || isOverDeducting}
               className="flex-1 py-2.5 rounded-lg bg-[#1e3a5f] text-white text-sm font-semibold hover:bg-[#162d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
               {loading
                 ? <><Loader2 size={14} className="animate-spin" /> Saving…</>
-                : <><Coins size={14} /> Set Budget</>}
+                : <><Coins size={14} /> Apply</>}
             </button>
           </div>
         </div>
@@ -235,7 +309,7 @@ function ChallengeRow({ challenge, completionCount, employeeCount }: {
         <div className="flex items-center gap-2 mt-1.5">
           <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full ${challenge.status === 'ended' ? 'bg-slate-400' : 'bg-emerald-500'}`}
+              className={`h-full rounded-full ${challenge.status === 'disabled' ? 'bg-slate-400' : challenge.status === 'completed' ? 'bg-teal-500' : 'bg-emerald-500'}`}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -244,29 +318,47 @@ function ChallengeRow({ challenge, completionCount, employeeCount }: {
       </div>
       <div className="text-right flex-shrink-0">
         <p className="text-xs font-bold text-gray-700 tabular-nums">{completionCount}/{employeeCount}</p>
-        <p className="text-[10px] text-gray-400">{challenge.token_budget.toLocaleString()} tk budget</p>
+        <p className="text-[10px] text-gray-400">{challenge.token_budget.toLocaleString()} tokens budget</p>
       </div>
     </div>
   )
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+interface OrgChallenge {
+  id: string
+  title: string
+  status: string
+  token_budget: number
+  created_at: string
+  updated_at?: string
+  manager_id?: string | null
+}
+
 interface Props {
   org: Organization
   initialEmployees: Employee[]
   initialLevelConfigs: OrgLevelConfig[]
   initialTenantAdminEmails?: string[]
   initialBudget: number | null
-  initialChallenges?: { id: string; title: string; status: string; token_budget: number }[]
+  initialChallenges?: OrgChallenge[]
   initialManagerBudgets?: { manager_id: string; tokens: number }[]
   initialCompletions?: { challenge_id: string; employee_id: string }[]
+  initialBudgetTransactions?: OrgBudgetTransaction[]
+  defaultTab?: string
 }
 
-type Tab = 'overview' | 'chart'
+const ORG_TABS = ['overview', 'chart', 'budget'] as const
+type Tab = typeof ORG_TABS[number]
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 export default function OrgDetailView({
   org, initialEmployees, initialLevelConfigs, initialTenantAdminEmails, initialBudget,
   initialChallenges = [], initialManagerBudgets = [], initialCompletions = [],
+  initialBudgetTransactions = [], defaultTab,
 }: Props) {
   const router = useRouter()
   const [employees, setEmployees] = useState(initialEmployees)
@@ -275,7 +367,21 @@ export default function OrgDetailView({
   const [showAssignAdmin, setShowAssignAdmin] = useState(false)
   const [showSetBudget, setShowSetBudget] = useState(false)
   const [budget, setBudget] = useState<number | null>(initialBudget)
-  const [tab, setTab] = useState<Tab>('overview')
+
+  const validDefault = ORG_TABS.includes(defaultTab as Tab) ? defaultTab as Tab : 'overview'
+  const [tab, setTab] = useState<Tab>(validDefault)
+  const [refreshing, setRefreshing] = useState(false)
+
+  function changeTab(next: Tab) {
+    setTab(next)
+    window.history.replaceState(null, '', `?tab=${next}`)
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 800)
+  }
 
   function handleImported(newEmployees: Employee[]) {
     setEmployees(prev => [...prev, ...newEmployees])
@@ -286,10 +392,10 @@ export default function OrgDetailView({
   const managerAllocated = initialManagerBudgets.reduce((s, b) => s + b.tokens, 0)
   const activeChallenges = initialChallenges.filter(c => c.status === 'active')
   const draftChallenges  = initialChallenges.filter(c => c.status === 'draft')
-  const endedChallenges  = initialChallenges.filter(c => c.status === 'ended')
-  // Active + draft challenges have tokens reserved (ended ones are settled)
+  const endedChallenges  = initialChallenges.filter(c => c.status === 'completed' || c.status === 'disabled')
+  // Active + draft challenges have tokens reserved (completed/disabled ones are settled)
   const challengeReserved = initialChallenges
-    .filter(c => c.status !== 'ended')
+    .filter(c => c.status === 'draft' || c.status === 'active')
     .reduce((s, c) => s + c.token_budget, 0)
   const totalConsumed = managerAllocated + challengeReserved
   const remaining = budget !== null ? budget - totalConsumed : null
@@ -328,23 +434,37 @@ export default function OrgDetailView({
 
         {/* Tabs */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 ml-2">
-          {(['overview', 'chart'] as Tab[]).map(t => (
+          {([
+            { id: 'overview', label: 'Overview' },
+            { id: 'chart',    label: 'Org Chart' },
+            { id: 'budget',   label: 'Budget' },
+          ] as { id: Tab; label: string }[]).map(({ id, label }) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={id}
+              onClick={() => changeTab(id)}
               className={`px-3 py-1 rounded-md text-[11px] font-bold capitalize transition-all ${
-                tab === t ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                tab === id ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {t === 'overview' ? 'Overview' : 'Org Chart'}
+              {label}
             </button>
           ))}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {tab === 'budget' && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-indigo-600 bg-gray-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 border border-gray-200 hover:border-indigo-200"
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+          )}
           <button onClick={() => setShowSetBudget(true)}
             className="flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-amber-700 bg-gray-100 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-amber-200">
-            <Coins size={14} /> {budget ? 'Edit Budget' : 'Set Budget'}
+            <Coins size={14} /> {budget !== null ? 'Add Budget' : 'Set Budget'}
           </button>
           <button onClick={() => setShowAssignAdmin(true)}
             className="flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-indigo-700 bg-gray-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-indigo-200">
@@ -473,8 +593,182 @@ export default function OrgDetailView({
         </div>
       )}
 
+      {/* ── Budget tab ── */}
+      {tab === 'budget' && (
+        <div className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="max-w-4xl mx-auto px-8 py-6 space-y-5">
+
+            {budget === null ? (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+                <Coins size={32} className="mx-auto text-gray-200 mb-3" />
+                <p className="text-sm font-bold text-gray-600">No budget set yet</p>
+                <p className="text-xs text-gray-400 mt-1">Use the "Add Budget" button above to set a token budget for this organisation.</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Budget', value: budget.toLocaleString(), sub: 'current balance' },
+                    { label: 'Manager Allocations', value: managerAllocated.toLocaleString(), sub: `${initialManagerBudgets.length} managers` },
+                    { label: 'Challenge Reserves', value: challengeReserved.toLocaleString(), sub: `${activeChallenges.length + draftChallenges.length} active/draft` },
+                    {
+                      label: isOver ? 'Over Budget' : 'Available',
+                      value: remaining !== null ? Math.abs(remaining).toLocaleString() : '—',
+                      accent: isOver ? 'text-red-600' : 'text-emerald-600',
+                    },
+                  ].map(card => (
+                    <div key={card.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                      <p className="text-[11px] text-gray-400 mb-1">{card.label}</p>
+                      <p className={`text-xl font-black tabular-nums ${(card as any).accent ?? 'text-gray-900'}`}>{card.value}</p>
+                      {card.sub && <p className="text-[10px] text-gray-400 mt-0.5">{card.sub}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progress bar */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Token Flow</p>
+                    <p className="text-[11px] text-gray-400">{usedPct.toFixed(0)}% consumed</p>
+                  </div>
+                  <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                    {managerAllocated > 0 && (
+                      <div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, (managerAllocated / budget) * 100)}%` }} />
+                    )}
+                    {challengeReserved > 0 && (
+                      <div className="h-full bg-amber-400" style={{ width: `${Math.min(100, (challengeReserved / budget) * 100)}%` }} />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-indigo-500"/><span className="text-[10px] text-gray-500">Managers ({managerAllocated.toLocaleString()})</span></div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-400"/><span className="text-[10px] text-gray-500">Challenges ({challengeReserved.toLocaleString()})</span></div>
+                    <div className="flex items-center gap-1.5 ml-auto"><div className="w-2 h-2 rounded-full bg-gray-200"/><span className="text-[10px] text-gray-500">Free ({Math.max(0, remaining ?? 0).toLocaleString()})</span></div>
+                  </div>
+                </div>
+
+                {/* ── Budget transaction history ── */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3.5 border-b border-gray-100">
+                    <p className="text-sm font-bold text-gray-900">Budget History</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Every token grant and deduction made by super admin</p>
+                  </div>
+                  {initialBudgetTransactions.length === 0 ? (
+                    <div className="flex flex-col items-center py-10 text-center px-6">
+                      <Coins size={22} className="text-gray-200 mb-2" />
+                      <p className="text-sm font-semibold text-gray-500">No history yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Budget changes will appear here after you add or deduct tokens.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {initialBudgetTransactions.map(tx => {
+                        const isCredit = tx.amount > 0
+                        return (
+                          <div key={tx.id} className="flex items-center gap-4 px-5 py-3.5">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isCredit ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                              {isCredit
+                                ? <ArrowDownLeft size={15} className="text-emerald-600" />
+                                : <TrendingDown  size={15} className="text-red-500" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800">
+                                {isCredit ? 'Tokens added' : 'Tokens deducted'}
+                              </p>
+                              <p className="text-[11px] text-gray-400 mt-0.5">
+                                New total: {tx.new_total.toLocaleString()} tokens · {fmtDate(tx.created_at)}
+                              </p>
+                            </div>
+                            <span className={`text-sm font-black tabular-nums flex-shrink-0 ${isCredit ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {isCredit ? '+' : '−'}{Math.abs(tx.amount).toLocaleString()} tokens
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Manager allocation list */}
+                {initialManagerBudgets.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-gray-100">
+                      <p className="text-sm font-bold text-gray-900">Manager Allocations</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">How the tenant admin has distributed tokens to managers</p>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {initialManagerBudgets.map(mb => {
+                        const mgr = employees.find(e => e.id === mb.manager_id)
+                        const pct = budget > 0 ? ((mb.tokens / budget) * 100).toFixed(0) : '0'
+                        return (
+                          <div key={mb.manager_id} className="flex items-center gap-4 px-5 py-3.5">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xs flex-shrink-0">
+                              {mgr ? `${mgr.first_name[0]}${mgr.last_name[0]}` : '?'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate">{mgr?.full_name ?? `Manager ${mb.manager_id.slice(0, 8)}`}</p>
+                              {mgr && <p className="text-[11px] text-gray-400 mt-0.5">L{mgr.level}{mgr.team_name ? ` · ${mgr.team_name}` : ''}</p>}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-sm font-black text-gray-900 tabular-nums">{mb.tokens.toLocaleString()} tokens</p>
+                              <p className="text-[11px] text-indigo-500 font-semibold">{pct}%</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Org-wide challenge reserves */}
+                {initialChallenges.filter(c => !c.manager_id).length > 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-gray-100">
+                      <p className="text-sm font-bold text-gray-900">Org-wide Challenge Reserves</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">Tokens locked for org-wide challenges</p>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {initialChallenges.filter(c => !c.manager_id).map(c => {
+                        const isEnded = c.status === 'completed' || c.status === 'disabled'
+                        const statusColors: Record<string, string> = {
+                          active:    'bg-emerald-50 text-emerald-700 border-emerald-200',
+                          draft:     'bg-gray-100 text-gray-500 border-gray-200',
+                          completed: 'bg-teal-50 text-teal-700 border-teal-200',
+                          disabled:  'bg-slate-100 text-slate-500 border-slate-200',
+                        }
+                        return (
+                          <div key={c.id} className="flex items-center gap-4 px-5 py-3.5">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isEnded ? 'bg-gray-100' : 'bg-amber-50'}`}>
+                              {isEnded ? <CheckCircle size={15} className="text-gray-400" /> : <Trophy size={15} className="text-amber-500" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-gray-900 truncate">{c.title}</p>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${statusColors[c.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                                  {c.status}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-400 mt-0.5">{c.created_at ? fmtDate(c.created_at) : ''}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className={`text-sm font-black tabular-nums ${isEnded ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                {c.token_budget.toLocaleString()} tokens
+                              </p>
+                              {isEnded && <p className="text-[10px] text-gray-400">settled</p>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {showSetBudget && (
-        <SetBudgetModal orgId={org.id} currentBudget={budget} onSaved={setBudget} onClose={() => setShowSetBudget(false)} />
+        <SetBudgetModal orgId={org.id} currentBudget={budget} availableBudget={remaining} onSaved={setBudget} onClose={() => setShowSetBudget(false)} />
       )}
       {showUpload && (
         <EmployeeUploadModal employees={employees} levelConfigs={initialLevelConfigs} orgId={org.id} onImported={handleImported} onCancel={() => setShowUpload(false)} />

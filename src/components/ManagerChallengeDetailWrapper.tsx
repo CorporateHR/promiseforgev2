@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   ChevronRight, Trophy, Calendar, CheckCircle2, RefreshCw,
-  Loader2, Bell, ChevronDown, Users,
+  Loader2, Bell, ChevronDown, Users, Pencil, X, Trash2, AlertCircle,
 } from 'lucide-react'
-import { getLiveCompletions } from '@/app/actions/challenges'
+import { getLiveCompletions, updateChallenge, updatePublishedChallengeInfo, deleteChallenge, endChallenge } from '@/app/actions/challenges'
 import { nudgeEmployeeAsManager, nudgeAllIncompleteAsManager } from '@/app/actions/simulator'
 import type { Employee, OrgLevelConfig, ChallengeWithTiers, EmployeeNode } from '@/lib/types'
 
@@ -44,6 +44,7 @@ interface Props {
   levelConfigs: OrgLevelConfig[]
   allOrgEmployees: Employee[]
   initialCompletedIds: Set<string>
+  isCreator: boolean
 }
 
 export default function ManagerChallengeDetailWrapper({
@@ -52,6 +53,7 @@ export default function ManagerChallengeDetailWrapper({
   levelConfigs,
   allOrgEmployees,
   initialCompletedIds,
+  isCreator,
 }: Props) {
   const router = useRouter()
   const [completedIds, setCompletedIds] = useState(initialCompletedIds)
@@ -59,13 +61,22 @@ export default function ManagerChallengeDetailWrapper({
   const [nudgingId, setNudgingId] = useState<string | null>(null)
   const [nudgingAll, setNudgingAll] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
-    const directReports = allOrgEmployees.filter(e => e.manager_id === manager.id)
-    return new Set(directReports.map(e => e.id))
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [localChallenge, setLocalChallenge] = useState(challenge)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({
+    title: challenge.title,
+    description: challenge.description,
+    start_date: challenge.start_date ?? '',
+    due_date: challenge.due_date ?? '',
   })
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [ending, setEnding] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  const subtree = getSubtree(manager.id, allOrgEmployees)
-  const isActive = challenge.status === 'active'
+  const subtree = [manager, ...getSubtree(manager.id, allOrgEmployees)]
+  const isActive = localChallenge.status === 'active'
 
   function showToast(type: 'success' | 'error', msg: string) {
     setToast({ type, msg })
@@ -97,10 +108,7 @@ export default function ManagerChallengeDetailWrapper({
   }
 
   const expandAll = () => setExpanded(new Set(subtree.map(e => e.id)))
-  const collapseAll = () => {
-    const directReports = allOrgEmployees.filter(e => e.manager_id === manager.id)
-    setExpanded(new Set(directReports.map(e => e.id)))
-  }
+  const collapseAll = () => setExpanded(new Set())
 
   async function handleRefresh() {
     setRefreshing(true)
@@ -126,21 +134,85 @@ export default function ManagerChallengeDetailWrapper({
     showToast('success', `Nudge sent to ${result.count} team member${result.count !== 1 ? 's' : ''}`)
   }
 
+  function openEdit() {
+    setEditForm({
+      title: localChallenge.title,
+      description: localChallenge.description,
+      start_date: localChallenge.start_date ?? '',
+      due_date: localChallenge.due_date ?? '',
+    })
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    const basicPayload = {
+      title: editForm.title,
+      description: editForm.description,
+      start_date: editForm.start_date || null,
+      due_date: editForm.due_date || null,
+    }
+    const result = localChallenge.status === 'active'
+      ? await updatePublishedChallengeInfo(localChallenge.id, basicPayload)
+      : await updateChallenge(localChallenge.id, {
+          ...basicPayload,
+          tiers: localChallenge.tiers.map(t => ({
+            level: t.level,
+            label: t.label,
+            is_individual: t.is_individual,
+            enabled: t.enabled,
+            threshold_pct: t.threshold_pct ?? 100,
+            base_tokens: t.base_tokens,
+            bonus_tokens: t.bonus_tokens,
+          })),
+        })
+    setSaving(false)
+    if ('error' in result) { showToast('error', result.error); return }
+    setLocalChallenge(prev => ({ ...prev, ...basicPayload }))
+    setEditing(false)
+    showToast('success', 'Challenge updated')
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this challenge? This cannot be undone.')) return
+    setDeleting(true)
+    setActionError(null)
+    const result = await deleteChallenge(localChallenge.id)
+    setDeleting(false)
+    if ('error' in result) { setActionError(result.error); return }
+    router.push('/dashboard/manager')
+  }
+
+  async function handleEnd() {
+    if (!confirm('End this challenge? This cannot be undone.')) return
+    setEnding(true)
+    setActionError(null)
+    const result = await endChallenge(localChallenge.id)
+    setEnding(false)
+    if ('error' in result) { setActionError(result.error); return }
+    setLocalChallenge(prev => ({ ...prev, status: result.newStatus }))
+  }
+
   const completedCount = subtree.filter(e => completedIds.has(e.id)).length
   const totalCount = subtree.length
   const pendingCount = totalCount - completedCount
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  const sortedTiers = [...challenge.tiers].sort((a, b) => a.level - b.level)
+  const sortedTiers = [...localChallenge.tiers].sort((a, b) => a.level - b.level)
   const individualTier = sortedTiers.find(t => t.is_individual)
   const enabledGroupTiers = sortedTiers.filter(t => !t.is_individual && t.enabled)
   const maxPerEmployee = (individualTier?.base_tokens ?? 0) + enabledGroupTiers.reduce((s, t) => s + t.bonus_tokens, 0)
 
-  const statusBadgeStyle = (({
-    active: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    ended:  'bg-slate-100 text-slate-500',
-    draft:  'bg-gray-100 text-gray-500',
-  } as Record<string, string>)[challenge.status]) ?? 'bg-gray-100 text-gray-500'
+  const statusBadgeStyle = ({
+    active:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    completed: 'bg-teal-50 text-teal-700 border border-teal-200',
+    disabled:  'bg-slate-100 text-slate-500',
+    draft:     'bg-gray-100 text-gray-500',
+  } as Record<string, string>)[localChallenge.status] ?? 'bg-gray-100 text-gray-500'
+
+  const canEdit = isCreator && (localChallenge.status === 'draft' || localChallenge.status === 'active')
+  const canDelete = isCreator && localChallenge.status === 'draft'
+  const canEnd = isCreator && localChallenge.status === 'active'
 
   const getLabel = (l: number) => levelConfigs.find(c => c.level === l)?.label ?? `L${l}`
 
@@ -169,16 +241,48 @@ export default function ManagerChallengeDetailWrapper({
       <div className="bg-white border-b border-gray-200 px-5 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push('/dashboard/manager')}
+            onClick={() => router.push('/dashboard/manager?tab=challenges')}
             className="flex items-center gap-1.5 text-sm font-semibold text-gray-400 hover:text-gray-700 transition-colors"
           >
             <ChevronRight size={14} className="rotate-180" /> Back to challenges
           </button>
         </div>
         <div className="flex items-center gap-1.5">
+          {canEdit && !editing && (
+            <button
+              onClick={openEdit}
+              title="Edit challenge"
+              className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-indigo-600 bg-white border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-xl transition-colors"
+            >
+              <Pencil size={12} /> Edit
+            </button>
+          )}
+          {canEnd && (
+            <button
+              onClick={handleEnd}
+              disabled={ending}
+              title="End challenge"
+              className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-700 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {ending ? <Loader2 size={12} className="animate-spin" /> : null}
+              {ending ? 'Ending…' : 'End'}
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Delete challenge"
+              className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-700 bg-white border border-red-200 hover:border-red-300 hover:bg-red-50 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
           <button
             onClick={handleRefresh}
             disabled={refreshing}
+            title="Refresh completions"
             className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-indigo-600 bg-white border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
           >
             <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
@@ -189,6 +293,12 @@ export default function ManagerChallengeDetailWrapper({
         </div>
       </div>
 
+      {actionError && (
+        <div className="mx-5 mt-3 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600">
+          <AlertCircle size={12} /> {actionError}
+        </div>
+      )}
+
       {/* Challenge header */}
       <div className="bg-white mx-5 mt-4 rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex-shrink-0">
         <div className={`h-1 w-full ${isActive ? 'bg-emerald-400' : 'bg-slate-300'}`} />
@@ -197,23 +307,78 @@ export default function ManagerChallengeDetailWrapper({
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-emerald-50' : 'bg-gray-50'}`}>
               <Trophy size={18} className={isActive ? 'text-emerald-600' : 'text-gray-400'} />
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-base font-extrabold text-gray-900">{challenge.title}</p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${statusBadgeStyle}`}>
-                  {challenge.status}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mt-1 leading-relaxed">{challenge.description}</p>
-              {(challenge.start_date || challenge.due_date) && (
-                <div className="flex items-center gap-1.5 mt-1.5 text-xs text-gray-400">
-                  <Calendar size={11} />
-                  {challenge.start_date && <span>{challenge.start_date}</span>}
-                  {challenge.start_date && challenge.due_date && <span>→</span>}
-                  {challenge.due_date && <span>{challenge.due_date}</span>}
+            {editing ? (
+              <div className="flex-1 min-w-0 space-y-2">
+                <input
+                  className="w-full text-sm font-bold text-gray-900 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  value={editForm.title}
+                  onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Challenge title"
+                />
+                <textarea
+                  className="w-full text-sm text-gray-600 border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  rows={2}
+                  value={editForm.description}
+                  onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Description"
+                />
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <Calendar size={11} className="text-gray-400 flex-shrink-0" />
+                    <input
+                      type="date"
+                      className="text-xs text-gray-600 border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full"
+                      value={editForm.start_date}
+                      onChange={e => setEditForm(f => ({ ...f, start_date: e.target.value }))}
+                    />
+                  </div>
+                  <span className="text-gray-300 text-xs">→</span>
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      className="text-xs text-gray-600 border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full"
+                      value={editForm.due_date}
+                      onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))}
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs font-bold transition-colors disabled:opacity-50"
+                  >
+                    <X size={11} /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-base font-extrabold text-gray-900">{localChallenge.title}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${statusBadgeStyle}`}>
+                    {localChallenge.status}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">{localChallenge.description}</p>
+                {(localChallenge.start_date || localChallenge.due_date) && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-xs text-gray-400">
+                    <Calendar size={11} />
+                    {localChallenge.start_date && <span>{localChallenge.start_date}</span>}
+                    {localChallenge.start_date && localChallenge.due_date && <span>→</span>}
+                    {localChallenge.due_date && <span>{localChallenge.due_date}</span>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Progress */}
@@ -226,7 +391,7 @@ export default function ManagerChallengeDetailWrapper({
             </div>
             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
               <div
-                className={`h-full rounded-full transition-all ${challenge.status === 'ended' ? 'bg-slate-400' : 'bg-emerald-500'}`}
+                className={`h-full rounded-full transition-all ${localChallenge.status === 'disabled' ? 'bg-slate-400' : localChallenge.status === 'completed' ? 'bg-teal-500' : 'bg-emerald-500'}`}
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -252,7 +417,7 @@ export default function ManagerChallengeDetailWrapper({
                 .filter(t => t.enabled || t.is_individual)
                 .map(t => (
                   <span key={t.level} className="text-[10px] font-bold text-gray-600 bg-gray-100 border border-gray-200 px-2 py-1 rounded-md">
-                    L{t.level} {t.is_individual ? `${fmt(t.base_tokens)}tk` : `+${fmt(t.bonus_tokens)}@${t.threshold_pct}%`}
+                    L{t.level} {t.is_individual ? `${fmt(t.base_tokens)}tokens` : `+${fmt(t.bonus_tokens)}@${t.threshold_pct}%`}
                   </span>
                 ))}
             </div>
@@ -263,6 +428,38 @@ export default function ManagerChallengeDetailWrapper({
       {/* Team tree */}
       <div className="flex-1 overflow-auto px-5 py-4">
         <div className="space-y-2">
+          {/* Manager (you) row at top */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className={`px-4 py-3 flex items-center gap-3 ${completedIds.has(manager.id) ? 'bg-emerald-50/30' : ''}`}>
+              <div className="w-6" />
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm flex-shrink-0 shadow-sm"
+                style={{ background: levelColor(manager.level) }}
+              >
+                {manager.first_name[0]}{manager.last_name[0]}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 truncate">
+                  {manager.full_name} <span className="text-[11px] font-normal text-indigo-500">(You)</span>
+                </p>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {levelConfigs.find(c => c.level === manager.level)?.label ?? `L${manager.level}`}
+                  {manager.team_name && <span className="text-gray-400"> · {manager.team_name}</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {completedIds.has(manager.id) ? (
+                  <div className="flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+                    <CheckCircle2 size={11} className="text-emerald-500" />
+                    <span className="text-[10px] font-bold text-emerald-600">Done</span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Pending</span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {tree.map(node => (
             <TeamGroupCard
               key={node.id}

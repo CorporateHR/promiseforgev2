@@ -40,7 +40,7 @@ function CreateOrgModal({ onCreated, onClose }: {
     onCreated({
       org: result.org!,
       employeeCount: 0,
-      levelCount: 3,
+      levelCount: 0,
       challengeCount: 0,
       activeChallengeCount: 0,
       totalBudget: null,

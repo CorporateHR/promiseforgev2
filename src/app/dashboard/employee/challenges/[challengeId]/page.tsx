@@ -33,11 +33,13 @@ export default async function EmployeeChallengeDetailPage({
     { data: challengeRaw },
     { data: allOrgEmployees },
     { data: allCompletionsRaw },
+    { data: levelConfigs },
   ] = await Promise.all([
     supabase.from('employees').select('*').eq('organization_id', orgId).eq('email', user.email!).single(),
     supabase.from('challenges').select('*, challenge_tiers(*)').eq('id', challengeId).single(),
     supabase.from('employees').select('id, full_name, first_name, last_name, level, manager_id, email, employee_id, team_name').eq('organization_id', orgId),
-    supabase.from('challenge_completions').select('challenge_id, employee_id, completed_at, challenges!inner(organization_id)').eq('challenges.organization_id', orgId),
+    supabase.rpc('get_org_completions', { p_org_id: orgId }),
+    supabase.from('org_level_configs').select('level, label').eq('organization_id', orgId),
   ])
 
   if (!employee || !challengeRaw) redirect('/dashboard/employee')
@@ -55,6 +57,7 @@ export default async function EmployeeChallengeDetailPage({
       employee={employee}
       allEmployees={(allOrgEmployees ?? []) as any[]}
       allCompletions={allCompletions}
+      levelConfigs={levelConfigs ?? []}
     />
   )
 }

@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { allocateManagerBudget } from '@/app/actions/budget'
 import {
-  Coins, Loader2, CheckCircle2, AlertCircle, Plus,
-  Search, X, ChevronRight, Pencil, Trash2,
+  Coins, Loader2, CheckCircle2, AlertCircle, Plus, PlusCircle,
+  Search, X, ChevronRight, ChevronDown, Trash2,
+  ArrowDownLeft, ArrowUpRight, Trophy, RefreshCw,
 } from 'lucide-react'
-import type { Employee, OrgLevelConfig, ManagerBudget } from '@/lib/types'
+import type { Employee, OrgLevelConfig, ManagerBudget, ManagerBudgetTransaction, ChallengeWithTiers } from '@/lib/types'
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -30,6 +32,23 @@ interface Props {
   levelConfigs: OrgLevelConfig[]
   totalBudget: number | null
   initialAllocations: ManagerBudget[]
+  initialTransactions: ManagerBudgetTransaction[]
+  orgChallenges: ChallengeWithTiers[]
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })
+}
+
+type EntryKind = 'credit' | 'debit' | 'settled'
+interface LedgerEntry {
+  kind: EntryKind
+  date: string
+  label: string
+  sub?: string
+  amount: number
 }
 
 interface Allocation {
@@ -43,6 +62,7 @@ function AllocateSheet({
   managers,
   levelConfigs,
   totalBudget,
+  challengeReserved,
   currentAllocations,
   editingManager,
   onSave,
@@ -51,6 +71,7 @@ function AllocateSheet({
   managers: Employee[]
   levelConfigs: OrgLevelConfig[]
   totalBudget: number
+  challengeReserved: number
   currentAllocations: Record<string, number>
   editingManager: Employee | null
   onSave: (managerId: string, tokens: number) => Promise<void>
@@ -59,20 +80,24 @@ function AllocateSheet({
   const [step, setStep] = useState<'pick' | 'amount'>(editingManager ? 'amount' : 'pick')
   const [selected, setSelected] = useState<Employee | null>(editingManager)
   const [query, setQuery] = useState('')
-  const [value, setValue] = useState<string>(
-    editingManager ? String(currentAllocations[editingManager.id] ?? '') : ''
-  )
+  const [value, setValue] = useState<string>('')   // always start empty — user enters a delta
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const totalAllocated = Object.values(currentAllocations).reduce((s, v) => s + v, 0)
-  // remaining after removing the current allocation of selected manager (so editing is fair)
   const otherAllocated = selected
     ? totalAllocated - (currentAllocations[selected.id] ?? 0)
     : totalAllocated
-  const remaining = totalBudget - otherAllocated
-  const inputTokens = parseInt(value) || 0
-  const isOver = inputTokens > remaining
+  const remaining = totalBudget - otherAllocated - challengeReserved
+
+  // Delta-based: value is the amount to ADD (negative to deduct)
+  const currentAmount = selected ? (currentAllocations[selected.id] ?? 0) : 0
+  const delta = value === '' || value === '-' ? 0 : (parseInt(value, 10) || 0)
+  const newTotal = currentAmount + delta
+  const isDeduction = delta < 0
+  const isBelowZero = newTotal < 0
+  const isOver = newTotal > remaining
+  const hasError = isBelowZero || isOver
 
   const filtered = managers.filter(m => {
     const q = query.toLowerCase()
@@ -86,10 +111,10 @@ function AllocateSheet({
   const getLabel = (l: number) => levelConfigs.find(c => c.level === l)?.label ?? `L${l}`
 
   async function handleSave() {
-    if (!selected || !inputTokens || isOver) return
+    if (!selected || delta === 0 || hasError) return
     setSaving(true)
     setError(null)
-    const result = await onSave(selected.id, inputTokens)
+    const result = await onSave(selected.id, newTotal)
     setSaving(false)
     // onSave throws on error
     onClose()
@@ -147,7 +172,7 @@ function AllocateSheet({
                     className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
                     style={{ background: color.light, color: color.bg }}
                   >
-                    {fmt(allocated)} tk
+                    {fmt(allocated)} tokens
                   </span>
                 )}
                 <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 flex-shrink-0 transition-colors" />
@@ -176,74 +201,93 @@ function AllocateSheet({
           </button>
         )}
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-          {/* Selected manager card */}
-          <div className="flex items-center gap-3 p-4 rounded-2xl border border-gray-100 bg-gray-50">
-            <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-sm flex-shrink-0"
-              style={{ background: color.bg }}
-            >
-              {initials(selected)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-gray-900 truncate">{selected.full_name}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                L{selected.level} · {getLabel(selected.level)}
-                {selected.team_name && ` · ${selected.team_name}`}
-              </p>
-            </div>
-          </div>
-
-          {/* Available balance */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-500">Available to allocate</p>
-              <p className="text-lg font-black text-gray-900 tabular-nums">{fmt(remaining)} tk</p>
-            </div>
-            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+          {/* Identity + stats — single compact card */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3">
               <div
-                className="h-full rounded-full bg-indigo-500 transition-all"
-                style={{ width: `${Math.min(100, (otherAllocated / totalBudget) * 100)}%` }}
-              />
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs flex-shrink-0"
+                style={{ background: color.bg }}
+              >
+                {initials(selected)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 truncate">{selected.full_name}</p>
+                <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                  L{selected.level} · {getLabel(selected.level)}
+                  {selected.team_name && ` · ${selected.team_name}`}
+                </p>
+              </div>
             </div>
-            <p className="text-[11px] text-gray-400">
-              {fmt(otherAllocated)} of {fmt(totalBudget)} already allocated to other managers
-            </p>
+            <div className="border-t border-gray-200/60 grid grid-cols-2 divide-x divide-gray-200/60">
+              <div className="px-4 py-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Current</p>
+                <p className="text-sm font-black tabular-nums text-gray-800">
+                  {currentAmount > 0 ? `${fmt(currentAmount)} tokens` : <span className="text-gray-400 font-semibold text-xs">None</span>}
+                </p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Available</p>
+                <p className="text-sm font-black text-emerald-600 tabular-nums">{fmt(remaining)} tokens</p>
+              </div>
+            </div>
           </div>
 
-          {/* Token input */}
+          {/* Delta input */}
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-2">
-              Tokens to allocate
+            <label className="block text-xs font-bold text-gray-600 mb-1.5">
+              Amount to add <span className="font-normal text-gray-400">· use − to deduct</span>
             </label>
             <div className={`flex items-center gap-2 border rounded-xl px-4 py-3 transition-all ${
-              isOver
+              hasError
                 ? 'border-red-300 bg-red-50'
-                : 'border-gray-200 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100'
+                : isDeduction
+                  ? 'border-amber-300 bg-amber-50 focus-within:border-amber-400'
+                  : 'border-gray-200 bg-gray-50 focus-within:border-indigo-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100'
             }`}>
-              <Coins size={16} className={isOver ? 'text-red-400' : 'text-gray-400'} />
+              <Coins size={15} className={hasError ? 'text-red-400' : isDeduction ? 'text-amber-500' : 'text-gray-400'} />
               <input
-                autoFocus={!!editingManager}
-                type="number"
-                min="0"
-                max={remaining}
+                autoFocus
+                type="text"
+                inputMode="numeric"
                 value={value}
                 onChange={e => { setValue(e.target.value); setError(null) }}
-                placeholder="0"
-                className="flex-1 bg-transparent text-xl font-black text-gray-800 outline-none placeholder-gray-300 tabular-nums"
+                placeholder="e.g. 5000 or -2000"
+                className="flex-1 bg-transparent text-2xl font-black text-gray-800 outline-none placeholder:text-gray-300 placeholder:text-base tabular-nums"
               />
-              <span className="text-sm text-gray-400 font-semibold">tokens</span>
+              <span className="text-xs font-bold text-gray-400 flex-shrink-0">tokens</span>
             </div>
-            {isOver && (
+
+            {/* Validation errors */}
+            {isBelowZero && (
               <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
-                <AlertCircle size={11} /> Exceeds available by {fmt(inputTokens - remaining)} tokens
+                <AlertCircle size={11} /> Cannot deduct more than current allocation ({fmt(currentAmount)} tokens)
               </p>
+            )}
+            {isOver && !isBelowZero && (
+              <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+                <AlertCircle size={11} /> Exceeds available budget by {fmt(newTotal - remaining)} tokens
+              </p>
+            )}
+
+            {/* New total preview */}
+            {delta !== 0 && !hasError && (
+              <div className={`mt-2 flex items-center justify-between rounded-xl px-3 py-2 border ${
+                isDeduction ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'
+              }`}>
+                <span className={`text-xs font-semibold ${isDeduction ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  New total
+                </span>
+                <span className={`text-sm font-black tabular-nums ${isDeduction ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {fmt(newTotal)} tokens
+                </span>
+              </div>
             )}
           </div>
 
-          {/* Quick chips */}
+          {/* Quick add chips */}
           <div>
-            <p className="text-[11px] font-semibold text-gray-400 mb-2">Quick amounts</p>
+            <p className="text-[11px] font-semibold text-gray-400 mb-2">Quick add</p>
             <div className="grid grid-cols-4 gap-2">
               {[100, 500, 1_000, 5_000].map(n => (
                 <button
@@ -252,7 +296,7 @@ function AllocateSheet({
                   onClick={() => setValue(String(n))}
                   className="py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  {n >= 1000 ? `${n / 1000}k` : n}
+                  +{n >= 1000 ? `${n / 1000}k` : n}
                 </button>
               ))}
             </div>
@@ -261,7 +305,7 @@ function AllocateSheet({
                 onClick={() => setValue(String(remaining))}
                 className="w-full mt-2 py-2 rounded-xl border border-dashed border-gray-200 text-xs font-bold text-gray-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
               >
-                Use all remaining · {fmt(remaining)} tokens
+                Add all remaining · +{fmt(remaining)} tokens
               </button>
             )}
           </div>
@@ -283,12 +327,12 @@ function AllocateSheet({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !inputTokens || isOver}
+            disabled={saving || delta === 0 || hasError}
             className="flex-1 py-2.5 rounded-xl bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saving
               ? <><Loader2 size={14} className="animate-spin" /> Saving…</>
-              : <><Coins size={14} /> Allocate Tokens</>}
+              : <><Coins size={14} /> {isDeduction ? 'Deduct Tokens' : 'Add Tokens'}</>}
           </button>
         </div>
       </div>
@@ -340,8 +384,15 @@ function StackedBar({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function BudgetTab({
-  orgId, employees, levelConfigs, totalBudget, initialAllocations,
+  orgId, employees, levelConfigs, totalBudget, initialAllocations, initialTransactions, orgChallenges,
 }: Props) {
+  // Org-wide challenges (manager_id null) that haven't ended reserve from the org budget
+  const challengeReserved = useMemo(
+    () => orgChallenges
+      .filter(c => !c.manager_id && (c.status === 'draft' || c.status === 'active'))
+      .reduce((s, c) => s + c.token_budget, 0),
+    [orgChallenges],
+  )
   // All managers (derived from org chart)
   const managers = useMemo(() => {
     const reporterSet = new Set(employees.filter(e => e.manager_id).map(e => e.manager_id!))
@@ -358,6 +409,7 @@ export default function BudgetTab({
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingManager, setEditingManager] = useState<Employee | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [allocationsOpen, setAllocationsOpen] = useState(false)
 
   // Build sorted allocations (allocated managers first, with their index in managers[])
   const allocations: Allocation[] = useMemo(() => {
@@ -368,8 +420,9 @@ export default function BudgetTab({
   }, [managers, tokenMap])
 
   const totalAllocated = allocations.reduce((s, a) => s + a.tokens, 0)
-  const remaining = totalBudget !== null ? totalBudget - totalAllocated : null
-  const usedPct = totalBudget ? Math.min(100, (totalAllocated / totalBudget) * 100) : 0
+  const totalConsumed = totalAllocated + challengeReserved
+  const remaining = totalBudget !== null ? totalBudget - totalConsumed : null
+  const usedPct = totalBudget ? Math.min(100, (totalConsumed / totalBudget) * 100) : 0
   const isNearLimit = remaining !== null && remaining >= 0 && usedPct >= 80
 
   function showToast(type: 'success' | 'error', msg: string) {
@@ -378,27 +431,126 @@ export default function BudgetTab({
   }
 
   async function handleSave(managerId: string, tokens: number) {
+    const oldTokens = tokenMap[managerId] ?? 0
+    const delta = tokens - oldTokens
     const result = await allocateManagerBudget(orgId, managerId, tokens)
     if (result.error) {
       showToast('error', result.error)
       throw new Error(result.error)
     }
     setTokenMap(prev => ({ ...prev, [managerId]: tokens }))
-    showToast('success', 'Tokens allocated successfully')
+    // Optimistically add the transaction to the ledger
+    setTransactions(prev => [{
+      id: crypto.randomUUID(),
+      organization_id: orgId,
+      manager_id: managerId,
+      amount: delta,
+      new_total: tokens,
+      allocated_by: null,
+      created_at: new Date().toISOString(),
+    }, ...prev])
+    showToast('success', delta > 0 ? 'Tokens allocated' : 'Tokens returned to pool')
   }
 
   async function handleRemove(managerId: string) {
+    const oldTokens = tokenMap[managerId] ?? 0
     const result = await allocateManagerBudget(orgId, managerId, 0)
     if (result.error) { showToast('error', result.error); return }
     setTokenMap(prev => { const n = { ...prev }; delete n[managerId]; return n })
+    if (oldTokens > 0) {
+      setTransactions(prev => [{
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        manager_id: managerId,
+        amount: -oldTokens,
+        new_total: 0,
+        allocated_by: null,
+        created_at: new Date().toISOString(),
+      }, ...prev])
+    }
     showToast('success', 'Allocation removed')
   }
 
-  function openAllocate() { setEditingManager(null); setSheetOpen(true) }
+  function openAllocate() { router.push('/dashboard/admin/budget/allocate') }
   function openEdit(m: Employee) { setEditingManager(m); setSheetOpen(true) }
   function closeSheet() { setSheetOpen(false); setEditingManager(null) }
 
+  const router = useRouter()
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 800)
+  }
+
   const getLabel = (l: number) => levelConfigs.find(c => c.level === l)?.label ?? `L${l}`
+  const getEmployee = (id: string) => employees.find(e => e.id === id)
+
+  // Keep a live copy of transactions so new ones added this session appear immediately
+  const [transactions, setTransactions] = useState(initialTransactions)
+
+  // Build transaction ledger from real delta records
+  const ledger = useMemo<LedgerEntry[]>(() => {
+    const entries: LedgerEntry[] = []
+
+    // Credit: budget received from super admin (no precise date — pin to top)
+    if (totalBudget && totalBudget > 0) {
+      entries.push({
+        kind: 'credit' as const,
+        date: '9999-12-31',
+        label: 'Received from Super Admin',
+        sub: 'Organisation token budget set',
+        amount: totalBudget,
+      })
+    }
+
+    // Real delta transactions (positive = allocated out, negative = returned)
+    const managersWithTxns = new Set(transactions.map(t => t.manager_id))
+    for (const txn of transactions) {
+      const mgr = getEmployee(txn.manager_id)
+      const isReturn = txn.amount < 0
+      entries.push({
+        kind: isReturn ? 'credit' as const : 'debit' as const,
+        date: txn.created_at,
+        label: isReturn
+          ? `Returned from ${mgr?.full_name ?? 'Manager'}`
+          : `Allocated to ${mgr?.full_name ?? 'Manager'}`,
+        sub: mgr ? `L${mgr.level} · ${getLabel(mgr.level)}${mgr.team_name ? ` · ${mgr.team_name}` : ''}` : undefined,
+        amount: Math.abs(txn.amount),
+      })
+    }
+
+    // Fallback: managers with current allocations but no transaction history yet
+    for (const alloc of initialAllocations) {
+      if (alloc.tokens <= 0 || managersWithTxns.has(alloc.manager_id)) continue
+      const mgr = getEmployee(alloc.manager_id)
+      entries.push({
+        kind: 'debit' as const,
+        date: alloc.updated_at,
+        label: `Allocated to ${mgr?.full_name ?? 'Manager'}`,
+        sub: mgr ? `L${mgr.level} · ${getLabel(mgr.level)}${mgr.team_name ? ` · ${mgr.team_name}` : ''}` : undefined,
+        amount: alloc.tokens,
+      })
+    }
+
+    // Org-wide challenges (manager_id null)
+    for (const c of orgChallenges.filter(ch => !ch.manager_id)) {
+      entries.push({
+        kind: (c.status === 'completed' || c.status === 'disabled') ? 'settled' as const : 'debit' as const,
+        date: (c.status === 'completed' || c.status === 'disabled') ? (c.updated_at ?? c.created_at) : c.created_at,
+        label: c.title,
+        sub: (c.status === 'completed' || c.status === 'disabled') ? 'Challenge ended · tokens settled' : `Org-wide challenge · ${c.status}`,
+        amount: c.token_budget,
+      })
+    }
+
+    return entries.sort((a, b) => {
+      if (a.kind === 'credit' && a.date === '9999-12-31') return -1
+      if (b.kind === 'credit' && b.date === '9999-12-31') return 1
+      return new Date(b.date).getTime() - new Date(a.date).getTime()
+    })
+  }, [totalBudget, transactions, initialAllocations, orgChallenges, employees, levelConfigs])
 
   if (!totalBudget) return <NoBudgetState />
 
@@ -420,17 +572,24 @@ export default function BudgetTab({
             Budget Overview
           </p>
 
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-4 gap-3 mb-4">
             <div>
-              <p className="text-[11px] text-gray-400 mb-0.5">Total tokens</p>
+              <p className="text-[11px] text-gray-400 mb-0.5">Received</p>
               <p className="text-2xl font-black text-gray-900 tabular-nums">{fmt(totalBudget)}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">from super admin</p>
             </div>
             <div>
-              <p className="text-[11px] text-gray-400 mb-0.5">Allocated</p>
+              <p className="text-[11px] text-gray-400 mb-0.5">Distributed</p>
               <p className="text-2xl font-black text-gray-900 tabular-nums">{fmt(totalAllocated)}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">to managers</p>
             </div>
             <div>
-              <p className="text-[11px] text-gray-400 mb-0.5">Remaining</p>
+              <p className="text-[11px] text-gray-400 mb-0.5">In Challenges</p>
+              <p className="text-2xl font-black text-gray-900 tabular-nums">{fmt(challengeReserved)}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">reserved</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400 mb-0.5">Available</p>
               <p className={`text-2xl font-black tabular-nums ${remainColor}`}>
                 {remaining !== null ? fmt(Math.abs(remaining)) : '—'}
               </p>
@@ -456,22 +615,42 @@ export default function BudgetTab({
 
         {/* Allocations list */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold text-gray-900">Allocations</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {allocations.length} of {managers.length} managers allocated
-              </p>
+          <div
+            className="px-5 py-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 transition-colors"
+            onClick={() => setAllocationsOpen(o => !o)}
+          >
+            <div className="flex items-center gap-2">
+              <ChevronDown
+                size={15}
+                className={`text-gray-400 transition-transform duration-200 ${allocationsOpen ? '' : '-rotate-90'}`}
+              />
+              <div>
+                <p className="text-sm font-bold text-gray-900">Allocations</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {allocations.length} of {managers.length} managers allocated
+                </p>
+              </div>
             </div>
-            <button
-              onClick={openAllocate}
-              className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
-            >
-              <Plus size={14} /> Allocate
-            </button>
+            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                title="Refresh budget data"
+              >
+                <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                onClick={openAllocate}
+                className="flex items-center gap-1.5 text-sm font-bold bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-3.5 py-2 rounded-xl transition-colors active:scale-95"
+              >
+                <Plus size={14} /> Allocate
+              </button>
+            </div>
           </div>
 
-          {allocations.length === 0 ? (
+          {allocationsOpen && (allocations.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center px-6">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-3">
                 <Coins size={20} className="text-indigo-300" />
@@ -527,9 +706,10 @@ export default function BudgetTab({
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <button
                         onClick={() => openEdit(m)}
+                        title="Add / adjust tokens"
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors"
                       >
-                        <Pencil size={13} />
+                        <Plus size={13} />
                       </button>
                       <button
                         onClick={() => handleRemove(m.id)}
@@ -542,8 +722,61 @@ export default function BudgetTab({
                 )
               })}
             </div>
+          ))}
+        </div>
+
+        {/* Transaction ledger */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-gray-100">
+            <p className="text-sm font-bold text-gray-900">Transactions</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Budget movements for this organisation</p>
+          </div>
+
+          {ledger.length === 0 ? (
+            <div className="flex flex-col items-center py-10 text-center px-6">
+              <Trophy size={22} className="text-gray-200 mb-2" />
+              <p className="text-sm font-semibold text-gray-500">No transactions yet</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {ledger.map((entry, i) => {
+                const isCredit  = entry.kind === 'credit'
+                const isSettled = entry.kind === 'settled'
+                return (
+                  <div key={i} className="flex items-center gap-4 px-5 py-3.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      isCredit  ? 'bg-emerald-50' :
+                      isSettled ? 'bg-gray-100'   :
+                                  'bg-indigo-50'
+                    }`}>
+                      {isCredit  ? <ArrowDownLeft size={15} className="text-emerald-600" />  :
+                       isSettled ? <CheckCircle2  size={15} className="text-gray-400"    />  :
+                                   <ArrowUpRight  size={15} className="text-indigo-500"  />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{entry.label}</p>
+                      {entry.sub && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{entry.sub}</p>}
+                    </div>
+                    {entry.kind !== 'credit' && (
+                      <span className="text-[11px] text-gray-400 flex-shrink-0 hidden sm:block">
+                        {fmtDate(entry.date)}
+                      </span>
+                    )}
+                    <span className={`text-sm font-black tabular-nums flex-shrink-0 text-right w-24 ${
+                      isCredit  ? 'text-emerald-600'            :
+                      isSettled ? 'text-gray-400 line-through'  :
+                                  'text-gray-800'
+                    }`}>
+                      {isCredit ? '+' : isSettled ? '' : '−'}
+                      {fmt(entry.amount)} tokens
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
+
       </div>
 
       {/* ── Right side sheet overlay ──────────────────────────────────────── */}
@@ -556,15 +789,15 @@ export default function BudgetTab({
           />
 
           {/* Sheet */}
-          <div className="absolute inset-y-0 right-0 w-80 bg-white border-l border-gray-100 shadow-2xl z-20 flex flex-col">
+          <div className="absolute inset-y-0 right-0 w-96 bg-white border-l border-gray-100 shadow-2xl z-20 flex flex-col">
             {/* Sheet header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
                 <p className="text-sm font-bold text-gray-900">
-                  {editingManager ? `Edit · ${editingManager.first_name}` : 'Allocate Tokens'}
+                  {editingManager ? `Adjust · ${editingManager.first_name}` : 'Allocate Tokens'}
                 </p>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  {fmt(totalBudget - totalAllocated + (editingManager ? (tokenMap[editingManager.id] ?? 0) : 0))} tokens available
+                  {fmt(totalBudget - totalConsumed + (editingManager ? (tokenMap[editingManager.id] ?? 0) : 0))} tokens available
                 </p>
               </div>
               <button
@@ -580,6 +813,7 @@ export default function BudgetTab({
               managers={managers}
               levelConfigs={levelConfigs}
               totalBudget={totalBudget}
+              challengeReserved={challengeReserved}
               currentAllocations={tokenMap}
               editingManager={editingManager}
               onSave={handleSave}

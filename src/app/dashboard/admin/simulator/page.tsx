@@ -33,8 +33,8 @@ export default async function AdminSimulatorPage() {
     supabase.from('employees').select('*').eq('organization_id', orgId).order('level').order('full_name'),
     supabase.from('org_budgets').select('total_tokens').eq('organization_id', orgId).single(),
     supabase.from('manager_budgets').select('*').eq('organization_id', orgId),
-    supabase.from('challenges').select('*, challenge_tiers(*)').eq('organization_id', orgId).order('created_at', { ascending: false }),
-    supabase.from('challenge_completions').select('*, challenges!inner(organization_id)').eq('challenges.organization_id', orgId),
+    supabase.from('challenges').select('*, challenge_tiers(*)').eq('organization_id', orgId).eq('status', 'active').order('created_at', { ascending: false }),
+    supabase.rpc('get_org_completions', { p_org_id: orgId }),
   ])
 
   if (!organization) redirect('/login')

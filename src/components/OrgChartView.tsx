@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Pencil, ChevronDown, ChevronUp, Users, ShieldCheck } from 'lucide-react'
+import { Pencil, ChevronDown, ChevronUp, Users, ShieldCheck, Coins } from 'lucide-react'
 import type { Employee, OrgLevelConfig, EmployeeNode } from '@/lib/types'
+
+function fmt(n: number) { return n.toLocaleString() }
 
 const LEVEL_COLORS = [
   '#1e3a5f', '#3730a3', '#0f766e', '#92400e',
@@ -33,6 +35,9 @@ function ChartCard({
   onEdit,
   readOnly = false,
   tenantAdminEmails,
+  onSelect,
+  isSelectable,
+  getAllocated,
 }: {
   node: EmployeeNode
   levelConfigs: OrgLevelConfig[]
@@ -41,6 +46,9 @@ function ChartCard({
   onEdit: (e: Employee) => void
   readOnly?: boolean
   tenantAdminEmails?: string[]
+  onSelect?: (e: Employee) => void
+  isSelectable?: (e: Employee) => boolean
+  getAllocated?: (e: Employee) => number | null
 }) {
   const label = levelConfigs.find(c => c.level === node.level)?.label ?? `L${node.level}`
   const color = levelColor(node.level)
@@ -48,92 +56,106 @@ function ChartCard({
   const isL0 = node.level === 0
   const isTenantAdmin = !!tenantAdminEmails?.length && !!node.email &&
     tenantAdminEmails.some(e => e.toLowerCase() === node.email!.toLowerCase())
+  const selectable = onSelect ? (isSelectable ? isSelectable(node) : true) : false
+  const allocated = getAllocated ? (getAllocated(node) ?? 0) : 0
 
   return (
     <div
-      className={`w-52 bg-white rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group relative ${
-        isTenantAdmin ? 'border-amber-400 ring-2 ring-amber-200/50' : 'border-gray-200 hover:border-indigo-300'
-      }`}
+      className={`w-48 bg-white rounded-xl border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden group relative ${
+        isTenantAdmin ? 'border-amber-300 ring-1 ring-amber-100' : 'border-gray-200 hover:border-indigo-200'
+      } ${onSelect && !selectable ? 'opacity-50' : ''}`}
     >
       {/* Accent bar */}
-      <div 
-        className="h-1.5 w-full"
+      <div
+        className="h-1 w-full"
         style={{ background: isTenantAdmin ? '#f59e0b' : color }}
       />
 
       {/* Card content */}
       <div className="p-4">
         {/* Level badge + Admin badge */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-1.5 mb-2.5">
           <span
-            className="text-[10px] font-black text-white px-2.5 py-1 rounded-lg shadow-sm flex-shrink-0"
+            className="text-[9px] font-semibold text-white px-2 py-0.5 rounded flex-shrink-0"
             style={{ background: isTenantAdmin ? '#f59e0b' : color }}
           >
             L{node.level}
           </span>
-          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider truncate">
+          <span className="text-[10px] font-medium text-gray-400 uppercase tracking-widest truncate">
             {label}
           </span>
           {isTenantAdmin && (
-            <ShieldCheck size={13} className="text-amber-500 flex-shrink-0 ml-auto" />
+            <ShieldCheck size={12} className="text-amber-400 flex-shrink-0 ml-auto" />
           )}
         </div>
 
         {/* Name */}
-        <div className="mb-3">
-          <div className="text-base font-extrabold text-gray-900 leading-tight mb-0.5">
-            {node.first_name}
-          </div>
-          <div className="text-base font-semibold text-gray-700 leading-tight">
-            {node.last_name}
+        <div className="mb-2.5">
+          <div className="text-sm font-semibold text-gray-900 leading-snug">
+            {node.first_name} {node.last_name}
           </div>
           {isTenantAdmin && (
-            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-600 mt-1.5">
-              <ShieldCheck size={11} /> Tenant Admin
+            <div className="flex items-center gap-1 text-[10px] font-medium text-amber-500 mt-1">
+              <ShieldCheck size={10} /> Tenant Admin
             </div>
           )}
         </div>
 
         {/* Meta info */}
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {node.employee_id && (
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-              <span className="font-mono font-semibold">{node.employee_id}</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+              <div className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
+              <span className="font-mono">{node.employee_id}</span>
             </div>
           )}
           {node.team_name && (
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-              <Users size={11} className="flex-shrink-0" />
-              <span className="font-medium truncate">{node.team_name}</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+              <Users size={10} className="flex-shrink-0" />
+              <span className="truncate">{node.team_name}</span>
+            </div>
+          )}
+          {allocated > 0 && (
+            <div className="flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full w-fit mt-1">
+              <Coins size={8} />
+              {fmt(allocated)}
             </div>
           )}
         </div>
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t border-gray-200">
-        {!isL0 && !readOnly ? (
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t border-gray-100">
+        {onSelect ? (
+          selectable ? (
+            <button
+              onClick={() => onSelect(node)}
+              className="flex items-center gap-1 text-[10px] font-medium text-indigo-500 hover:text-indigo-700 transition-all opacity-0 group-hover:opacity-100"
+            >
+              <Coins size={10} /> {allocated > 0 ? 'Adjust' : 'Allocate'}
+            </button>
+          ) : <div />
+        ) : !isL0 && !readOnly ? (
           <button
             onClick={() => onEdit(node)}
-            className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 hover:text-indigo-600 transition-all opacity-0 group-hover:opacity-100 hover:scale-105"
+            className="flex items-center gap-1 text-[10px] font-medium text-gray-400 hover:text-indigo-500 transition-all opacity-0 group-hover:opacity-100"
           >
-            <Pencil size={11} /> Edit
+            <Pencil size={10} /> Edit
           </button>
         ) : <div />}
 
         {hasChildren && (
           <button
             onClick={onToggle}
-            className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ml-auto ${
-              isExpanded 
-                ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' 
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded transition-all ml-auto ${
+              isExpanded
+                ? 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
           >
             {isExpanded
-              ? <><ChevronUp size={12} /> {node.children.length}</>
-              : <><ChevronDown size={12} /> {node.children.length}</>
+              ? <><ChevronUp size={11} /> {node.children.length}</>
+              : <><ChevronDown size={11} /> {node.children.length}</>
             }
           </button>
         )}
@@ -151,6 +173,9 @@ function ChartNode({
   onEdit,
   readOnly = false,
   tenantAdminEmails,
+  onSelect,
+  isSelectable,
+  getAllocated,
 }: {
   node: EmployeeNode
   levelConfigs: OrgLevelConfig[]
@@ -159,6 +184,9 @@ function ChartNode({
   onEdit: (e: Employee) => void
   readOnly?: boolean
   tenantAdminEmails?: string[]
+  onSelect?: (e: Employee) => void
+  isSelectable?: (e: Employee) => boolean
+  getAllocated?: (e: Employee) => number | null
 }) {
   const isExpanded = expanded.has(node.id)
   const hasChildren = node.children.length > 0
@@ -173,12 +201,15 @@ function ChartNode({
         onEdit={onEdit}
         readOnly={readOnly}
         tenantAdminEmails={tenantAdminEmails}
+        onSelect={onSelect}
+        isSelectable={isSelectable}
+        getAllocated={getAllocated}
       />
 
       {hasChildren && isExpanded && (
         <>
           {/* Vertical connector line */}
-          <div className="w-0.5 h-8 bg-gradient-to-b from-indigo-300 to-indigo-200 rounded-full" />
+          <div className="w-px h-6 bg-gray-200" />
           {/* Children row — connector lines handled by CSS .oc-child */}
           <div className="oc-children">
             {node.children.map(child => (
@@ -191,6 +222,9 @@ function ChartNode({
                   onEdit={onEdit}
                   readOnly={readOnly}
                   tenantAdminEmails={tenantAdminEmails}
+                  onSelect={onSelect}
+                  isSelectable={isSelectable}
+                  getAllocated={getAllocated}
                 />
               </div>
             ))}
@@ -202,9 +236,9 @@ function ChartNode({
       {hasChildren && !isExpanded && (
         <button
           onClick={() => onToggle(node.id)}
-          className="mt-3 flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-200 hover:border-indigo-300 rounded-xl px-4 py-2 transition-all shadow-sm hover:shadow-md hover:scale-105"
+          className="mt-2 flex items-center gap-1.5 text-[10px] font-medium text-indigo-500 hover:text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-3 py-1.5 transition-all"
         >
-          <ChevronDown size={13} />
+          <ChevronDown size={11} />
           <span>{node.children.length} report{node.children.length !== 1 ? 's' : ''}</span>
         </button>
       )}
@@ -219,15 +253,18 @@ interface Props {
   onEdit: (e: Employee) => void
   readOnly?: boolean
   tenantAdminEmails?: string[]
+  onSelect?: (e: Employee) => void
+  isSelectable?: (e: Employee) => boolean
+  getAllocated?: (e: Employee) => number | null
 }
 
-export default function OrgChartView({ employees, levelConfigs, onEdit, readOnly = false, tenantAdminEmails }: Props) {
+export default function OrgChartView({ employees, levelConfigs, onEdit, readOnly = false, tenantAdminEmails, onSelect, isSelectable, getAllocated }: Props) {
   const tree = useMemo(() => buildTree(employees), [employees])
 
-  // Default: expand L0 and L1 only
+  // Default: expand L0 only (shows L1 children)
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const s = new Set<string>()
-    employees.filter(e => e.level <= 1).forEach(e => s.add(e.id))
+    employees.filter(e => e.level === 0).forEach(e => s.add(e.id))
     return s
   })
 
@@ -254,31 +291,31 @@ export default function OrgChartView({ employees, levelConfigs, onEdit, readOnly
     <div className="flex flex-col h-full overflow-hidden bg-gradient-to-br from-slate-50 to-indigo-50">
 
       {/* Level legend strip */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-6 py-4 bg-white/80 backdrop-blur-sm border-b-2 border-gray-200 shadow-sm flex-wrap">
+      <div className="flex-shrink-0 flex items-center gap-2 px-6 py-3 bg-white border-b border-gray-100 flex-wrap">
         {presentLevels.map(({ level, label }) => (
-          <div key={level} className="flex items-center gap-2">
+          <div key={level} className="flex items-center gap-1.5">
             <span
-              className="flex items-center gap-1.5 text-[11px] font-black text-white px-3 py-1.5 rounded-lg shadow-sm"
+              className="text-[9px] font-semibold text-white px-2 py-0.5 rounded"
               style={{ background: levelColor(level) }}
             >
               L{level}
             </span>
-            <span className="text-[12px] font-bold text-gray-700">{label}</span>
+            <span className="text-[11px] font-medium text-gray-500">{label}</span>
             {level < presentLevels[presentLevels.length - 1].level && (
-              <span className="text-gray-300 text-base mx-1">•</span>
+              <span className="text-gray-200 text-sm mx-1">•</span>
             )}
           </div>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          <button 
-            onClick={expandAll} 
-            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-all hover:shadow-sm"
+          <button
+            onClick={expandAll}
+            className="text-xs font-medium text-indigo-500 hover:text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-3 py-1.5 rounded-lg transition-all"
           >
             Expand all
           </button>
-          <button 
-            onClick={collapseAll} 
-            className="text-xs font-semibold text-gray-600 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 px-3 py-1.5 rounded-lg transition-all hover:shadow-sm"
+          <button
+            onClick={collapseAll}
+            className="text-xs font-medium text-gray-500 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg transition-all"
           >
             Collapse
           </button>
@@ -298,6 +335,9 @@ export default function OrgChartView({ employees, levelConfigs, onEdit, readOnly
               onEdit={onEdit}
               readOnly={readOnly}
               tenantAdminEmails={tenantAdminEmails}
+              onSelect={onSelect}
+              isSelectable={isSelectable}
+              getAllocated={getAllocated}
             />
           ))}
         </div>

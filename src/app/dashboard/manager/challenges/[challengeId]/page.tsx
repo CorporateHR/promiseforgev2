@@ -39,7 +39,7 @@ export default async function ManagerChallengeDetail({
     supabase.from('employees').select('*').eq('organization_id', orgId).eq('email', user.email!).single(),
     supabase.from('challenges').select('*, challenge_tiers(*)').eq('id', challengeId).single(),
     supabase.from('employees').select('id, full_name, first_name, last_name, level, manager_id, email, employee_id, team_name').eq('organization_id', orgId),
-    supabase.from('challenge_completions').select('challenge_id, employee_id, challenges!inner(organization_id)').eq('challenges.organization_id', orgId).eq('challenge_id', challengeId),
+    supabase.rpc('get_org_completions', { p_org_id: orgId }),
   ])
 
   if (!employee || !challengeRaw) redirect('/dashboard/manager')
@@ -49,15 +49,47 @@ export default async function ManagerChallengeDetail({
     tiers: (challengeRaw as any).challenge_tiers ?? [],
   }
 
-  const completedIds = new Set((completionsRaw ?? []).map((c: any) => c.employee_id))
+  const allEmployees = (allOrgEmployees ?? []) as any[]
+
+  // If this is a subordinate's challenge (created by someone below the current manager),
+  // show the detail from the challenge creator's perspective so the scope is correct.
+  const challengeManagerId = (challengeRaw as any).manager_id as string | null
+  let effectiveManager = employee
+  if (challengeManagerId && challengeManagerId !== employee.id) {
+    // Check if challenge creator is in current manager's subtree
+    function isInSubtree(targetId: string, rootId: string): boolean {
+      const queue = [rootId]
+      const seen = new Set<string>()
+      while (queue.length) {
+        const id = queue.shift()!
+        if (seen.has(id)) continue
+        seen.add(id)
+        const reports = allEmployees.filter((e: any) => e.manager_id === id)
+        if (reports.some((r: any) => r.id === targetId)) return true
+        queue.push(...reports.map((r: any) => r.id))
+      }
+      return false
+    }
+    if (isInSubtree(challengeManagerId, employee.id)) {
+      const challengeCreator = allEmployees.find((e: any) => e.id === challengeManagerId)
+      if (challengeCreator) effectiveManager = challengeCreator
+    }
+  }
+
+  const completedIds = new Set<string>(
+    (completionsRaw as any[] ?? []).filter((c: any) => c.challenge_id === challengeId).map((c: any) => c.employee_id as string)
+  )
+
+  const isCreator = (challengeRaw as any).created_by === user.id
 
   return (
     <ManagerChallengeDetailWrapper
       challenge={challenge}
-      manager={employee}
+      manager={effectiveManager}
       levelConfigs={levelConfigs ?? []}
-      allOrgEmployees={(allOrgEmployees ?? []) as any[]}
+      allOrgEmployees={allEmployees}
       initialCompletedIds={completedIds}
+      isCreator={isCreator}
     />
   )
 }

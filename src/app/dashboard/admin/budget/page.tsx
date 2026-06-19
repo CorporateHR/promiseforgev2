@@ -25,6 +25,7 @@ export default async function AdminBudgetPage() {
     { data: employees },
     { data: orgBudget },
     { data: managerBudgets },
+    { data: managerTransactions },
     { data: challengesRaw },
     { data: completionsRaw },
   ] = await Promise.all([
@@ -33,8 +34,9 @@ export default async function AdminBudgetPage() {
     supabase.from('employees').select('*').eq('organization_id', orgId).order('level').order('full_name'),
     supabase.from('org_budgets').select('total_tokens').eq('organization_id', orgId).single(),
     supabase.from('manager_budgets').select('*').eq('organization_id', orgId),
+    supabase.from('manager_budget_transactions').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }),
     supabase.from('challenges').select('*, challenge_tiers(*)').eq('organization_id', orgId).order('created_at', { ascending: false }),
-    supabase.from('challenge_completions').select('*, challenges!inner(organization_id)').eq('challenges.organization_id', orgId),
+    supabase.rpc('get_org_completions', { p_org_id: orgId }),
   ])
 
   if (!organization) redirect('/login')
@@ -52,9 +54,11 @@ export default async function AdminBudgetPage() {
       orgId={orgId}
       totalBudget={orgBudget?.total_tokens ?? null}
       initialManagerBudgets={managerBudgets ?? []}
+      initialManagerTransactions={managerTransactions ?? []}
       initialChallenges={initialChallenges}
       initialCompletions={(completionsRaw ?? []) as any[]}
       defaultView="budget"
+      currentUserId={user.id}
     />
   )
 }

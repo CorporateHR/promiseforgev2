@@ -6,7 +6,7 @@ import {
   Loader2, Layers, Target, RefreshCw,
 } from 'lucide-react'
 import { recordCompletion, getLiveCompletions } from '@/app/actions/challenges'
-import type { ChallengeWithTiers, ChallengeTier, Employee } from '@/lib/types'
+import type { ChallengeWithTiers, ChallengeTier, Employee, OrgLevelConfig } from '@/lib/types'
 
 const LEVEL_COLORS = [
   '#1e3a5f', '#3730a3', '#0f766e', '#92400e',
@@ -103,6 +103,9 @@ function calcTierState(
   if (!tier.enabled) return 'not_earned'
   const group = getRelevantGroup(employee, tier.level, allEmployees)
   if (group.length === 0) return 'pending'
+  // A leaf at this tier level (group = only themselves) earns nothing from this group tier.
+  // They would earn from the next tier above (if it exists in the challenge).
+  if (group.length === 1 && group[0].id === employee.id) return 'not_earned'
   const done = group.filter(e => completedSet.has(e.id)).length
   const pct = (done / group.length) * 100
   const groupMet = pct >= (tier.threshold_pct ?? 0)
@@ -123,6 +126,10 @@ function getTierGroupInfo(
     return { groupSize: 1, doneInGroup: done, thresholdCount: 1 }
   }
   const group = getRelevantGroup(employee, tier.level, allEmployees)
+  // Leaf at this tier level — no meaningful group, show as not applicable
+  if (group.length === 1 && group[0]?.id === employee.id) {
+    return { groupSize: 0, doneInGroup: 0, thresholdCount: 0 }
+  }
   const doneInGroup = group.filter(e => completedSet.has(e.id)).length
   const thresholdCount = Math.ceil(group.length * (tier.threshold_pct ?? 0) / 100)
   return { groupSize: group.length, doneInGroup, thresholdCount }
@@ -145,6 +152,7 @@ interface Props {
   employee: Employee
   allEmployees: Employee[]
   allCompletions: { challenge_id: string; employee_id: string; completed_at: string }[]
+  levelConfigs?: Pick<OrgLevelConfig, 'level' | 'label'>[]
   onBack: () => void
   onComplete: (challengeId: string, employeeId: string, completedAt: string) => void
 }
@@ -153,11 +161,33 @@ interface Props {
 export default function EmployeeChallengeDetail({
   challenge,
   employee,
-  allEmployees,
+  allEmployees: allOrgEmployees,
   allCompletions,
+  levelConfigs = [],
   onBack,
   onComplete,
 }: Props) {
+  const getLevelLabel = (level: number, fallback: string) =>
+    levelConfigs.find(c => c.level === level)?.label ?? fallback
+  // For manager-scoped challenges, restrict the employee pool to the manager's subtree
+  // (including the manager themselves, who participates in their own challenge).
+  const allEmployees = (() => {
+    if (!challenge.manager_id) return allOrgEmployees
+    const mgr = allOrgEmployees.find(e => e.id === challenge.manager_id)
+    const result: Employee[] = mgr ? [mgr] : []
+    const queue = [challenge.manager_id]
+    const seen = new Set<string>()
+    while (queue.length) {
+      const id = queue.shift()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const reports = allOrgEmployees.filter(e => e.manager_id === id)
+      result.push(...reports)
+      queue.push(...reports.map(r => r.id))
+    }
+    return result
+  })()
+
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -185,10 +215,13 @@ export default function EmployeeChallengeDetail({
   const individualTier = sortedTiers.find(t => t.is_individual)
   const groupTiers = sortedTiers.filter(t => !t.is_individual && t.enabled)
 
-  // Max potential = base + all enabled group bonuses
+  // Max potential = base + only group bonuses this employee can actually earn
   const maxPotential =
     (individualTier?.base_tokens ?? 0) +
-    groupTiers.reduce((s, t) => s + t.bonus_tokens, 0)
+    groupTiers.reduce((s, t) => {
+      const { groupSize } = getTierGroupInfo(t, employee, allEmployees, completedSet)
+      return groupSize > 0 ? s + t.bonus_tokens : s
+    }, 0)
 
   // Earned = sum of tokens from tiers in 'earned' state
   const earned = sortedTiers.reduce((sum, tier) => {
@@ -198,16 +231,18 @@ export default function EmployeeChallengeDetail({
   }, 0)
 
   // Scope label: highest-in-hierarchy group tier (lowest level number)
-  const scopeLabel = sortedTiers.filter(t => !t.is_individual)[0]?.label ?? null
+  const scopeTier = sortedTiers.filter(t => !t.is_individual)[0] ?? null
+  const scopeLabel = scopeTier ? getLevelLabel(scopeTier.level, scopeTier.label) : null
 
   // Days label
   const days = daysLabel(challenge.due_date)
 
-  const statusStyle = {
-    draft:  'text-gray-500 bg-gray-100',
-    active: 'text-emerald-700 bg-emerald-50 border border-emerald-200',
-    ended:  'text-slate-500 bg-slate-100',
-  }[challenge.status] ?? 'text-gray-500 bg-gray-100'
+  const statusStyle = ({
+    draft:     'text-gray-500 bg-gray-100',
+    active:    'text-emerald-700 bg-emerald-50 border border-emerald-200',
+    completed: 'text-teal-700 bg-teal-50 border border-teal-200',
+    disabled:  'text-slate-500 bg-slate-100',
+  } as Record<string, string>)[challenge.status] ?? 'text-gray-500 bg-gray-100'
 
   async function handleMarkComplete() {
     setCompleting(true)
@@ -224,7 +259,7 @@ export default function EmployeeChallengeDetail({
 
         {/* ── Header ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className={`h-1 w-full ${challenge.status === 'active' ? 'bg-indigo-500' : challenge.status === 'ended' ? 'bg-slate-300' : 'bg-gray-200'}`} />
+          <div className={`h-1 w-full ${challenge.status === 'active' ? 'bg-indigo-500' : challenge.status === 'completed' ? 'bg-teal-400' : challenge.status === 'disabled' ? 'bg-slate-300' : 'bg-gray-200'}`} />
           <div className="p-5">
             {/* Top row: back + title + status + refresh */}
             <div className="flex items-start gap-3 mb-2">
@@ -372,6 +407,10 @@ export default function EmployeeChallengeDetail({
               const { groupSize, doneInGroup, thresholdCount } = getTierGroupInfo(
                 tier, employee, allEmployees, completedSet,
               )
+
+              // Hide group tiers the employee has no valid group for (e.g. leaf at that level)
+              if (!tier.is_individual && groupSize === 0) return null
+
               const progressPct = groupSize > 0 ? Math.min(100, Math.round((doneInGroup / groupSize) * 100)) : 0
               const thresholdMet = state === 'earned'
               const isDisabled = !tier.enabled && !tier.is_individual
@@ -385,15 +424,13 @@ export default function EmployeeChallengeDetail({
                 >
                   {/* Level */}
                   <div className="flex items-center gap-2 min-w-0">
-                    {tier.is_individual ? (
-                      <span
-                        className="text-[9px] font-black text-white px-1.5 py-0.5 rounded-md flex-shrink-0"
-                        style={{ background: levelColor(tier.level) }}
-                      >
-                        L{tier.level}
-                      </span>
-                    ) : null}
-                    <span className="text-xs font-bold text-gray-800 truncate">{tier.label}</span>
+                    <span
+                      className="text-[9px] font-black text-white px-1.5 py-0.5 rounded-md flex-shrink-0"
+                      style={{ background: levelColor(tier.level) }}
+                    >
+                      L{tier.level}
+                    </span>
+                    <span className="text-xs font-bold text-gray-800 truncate">{getLevelLabel(tier.level, tier.label)}</span>
                   </div>
 
                   {/* Requirement */}

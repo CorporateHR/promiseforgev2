@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ChallengeDetailSheet from '@/components/ChallengeDetailSheet'
+import AdminChallengeDetailView from '@/components/AdminChallengeDetailView'
 
 export default async function AdminChallengeDetailPage({
   params,
@@ -25,20 +25,18 @@ export default async function AdminChallengeDetailPage({
   const orgId = profile.organization_id
 
   const [
-    { data: organization },
     { data: levelConfigs },
     { data: employees },
     { data: challengeRaw },
     { data: completionsRaw },
   ] = await Promise.all([
-    supabase.from('organizations').select('*').eq('id', orgId).single(),
     supabase.from('org_level_configs').select('*').eq('organization_id', orgId).order('level'),
     supabase.from('employees').select('*').eq('organization_id', orgId).order('level').order('full_name'),
     supabase.from('challenges').select('*, challenge_tiers(*)').eq('id', challengeId).single(),
     supabase.from('challenge_completions').select('employee_id').eq('challenge_id', challengeId),
   ])
 
-  if (!organization || !challengeRaw) redirect('/dashboard/admin/challenges')
+  if (!challengeRaw) redirect('/dashboard/admin/challenges')
 
   const challenge = {
     ...challengeRaw,
@@ -46,16 +44,15 @@ export default async function AdminChallengeDetailPage({
   }
 
   const completedEmployeeIds = new Set((completionsRaw ?? []).map((c: any) => c.employee_id))
+  const isCreator = (challengeRaw as any).created_by === user.id
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      <ChallengeDetailSheet
-        challenge={challenge}
-        employees={employees ?? []}
-        levelConfigs={levelConfigs ?? []}
-        completedEmployeeIds={completedEmployeeIds}
-        isFullPage
-      />
-    </div>
+    <AdminChallengeDetailView
+      challenge={challenge}
+      levelConfigs={levelConfigs ?? []}
+      allEmployees={employees ?? []}
+      initialCompletedIds={completedEmployeeIds}
+      isCreator={isCreator}
+    />
   )
 }
