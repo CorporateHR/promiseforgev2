@@ -289,8 +289,18 @@ export default function EmployeeUploadModal({ employees, levelConfigs, orgId, on
   async function handleImport() {
     const validRows = rows.filter(r => r.errors.length === 0)
     if (!validRows.length) return
-    setImporting(true); setProgress(0)
+    setImporting(true); setProgress(0); setParseError(null)
 
+    try {
+      await runImport(validRows)
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'Import failed unexpectedly. Please try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function runImport(validRows: ParsedRow[]) {
     // Build resolution map: employee_id (lowercase) → { uuid, level }
     // Also index by email for flexibility
     const byEmpId  = new Map<string, ResolvedEntry>()
@@ -380,11 +390,21 @@ export default function EmployeeUploadModal({ employees, levelConfigs, orgId, on
       .filter((emp): emp is Employee & { email: string } => !!emp.email)
       .map(emp => ({ email: emp.email, full_name: emp.full_name }))
     if (inviteRecipients.length > 0) {
-      invite = await inviteEmployees(orgId, inviteRecipients)
+      try {
+        invite = await inviteEmployees(orgId, inviteRecipients)
+      } catch (err) {
+        invite = {
+          invited: 0,
+          skipped: 0,
+          failed: inviteRecipients.map(r => ({
+            email: r.email,
+            reason: err instanceof Error ? err.message : 'Failed to send invite emails',
+          })),
+        }
+      }
     }
 
     setResult({ imported, failedRows, invite })
-    setImporting(false)
     if (imported.length > 0) onImported(imported)
   }
 
