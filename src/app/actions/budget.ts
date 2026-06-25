@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { sendEmail, orgBudgetSetHtml, managerBudgetSetHtml, employeeBudgetSetHtml } from '@/lib/email'
 
 // Super admin sets the total token budget for an org
 export async function setOrgBudget(orgId: string, totalTokens: number) {
@@ -35,6 +37,33 @@ export async function setOrgBudget(orgId: string, totalTokens: number) {
       new_total: totalTokens,
       created_by: user.id,
     })
+
+    // Notify tenant admins of this org — fire-and-forget, doesn't block the response.
+    // Uses the admin client because `profiles` RLS only allows reading your own row.
+    ;(async () => {
+      try {
+        const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).single()
+        const admin = createAdminClient()
+        const { data: admins } = await admin
+          .from('profiles')
+          .select('full_name, email')
+          .eq('organization_id', orgId)
+          .eq('role', 'tenant_admin')
+        const orgName = org?.name ?? 'your organization'
+        await Promise.allSettled(
+          (admins ?? []).filter(a => a.email).map(a =>
+            sendEmail(
+              a.email!,
+              a.full_name ?? '',
+              `${orgName}'s token budget was updated`,
+              orgBudgetSetHtml(a.full_name ?? '', orgName, delta, totalTokens),
+            ).catch(err => console.error('[Org Budget Set] Email failed:', err)),
+          ),
+        )
+      } catch (err) {
+        console.error('[Org Budget Set] Notification error:', err)
+      }
+    })()
   }
 
   return { success: true }
@@ -101,6 +130,24 @@ export async function allocateEmployeeBudget(
     allocated_by: user.id,
   })
 
+  // Notify the employee — fire-and-forget, doesn't block the response.
+  ;(async () => {
+    try {
+      const { data: employee } = await supabase.from('employees').select('full_name, email').eq('id', employeeId).single()
+      const { data: manager } = await supabase.from('employees').select('full_name').eq('id', managerId).single()
+      if (employee?.email) {
+        await sendEmail(
+          employee.email,
+          employee.full_name ?? '',
+          'Your token budget was updated',
+          employeeBudgetSetHtml(employee.full_name ?? '', manager?.full_name ?? 'your manager', delta, tokens),
+        )
+      }
+    } catch (err) {
+      console.error('[Employee Budget Set] Email failed:', err)
+    }
+  })()
+
   revalidatePath('/dashboard/manager')
   return { success: true }
 }
@@ -159,6 +206,24 @@ export async function allocateManagerBudget(orgId: string, managerId: string, to
     new_total: tokens,
     allocated_by: user.id,
   })
+
+  // Notify the manager — fire-and-forget, doesn't block the response.
+  ;(async () => {
+    try {
+      const { data: manager } = await supabase.from('employees').select('full_name, email').eq('id', managerId).single()
+      const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).single()
+      if (manager?.email) {
+        await sendEmail(
+          manager.email,
+          manager.full_name ?? '',
+          'Your token budget was updated',
+          managerBudgetSetHtml(manager.full_name ?? '', org?.name ?? 'your organization', delta, tokens),
+        )
+      }
+    } catch (err) {
+      console.error('[Manager Budget Set] Email failed:', err)
+    }
+  })()
 
   revalidatePath('/dashboard/manager')
   revalidatePath('/dashboard/admin/manager')

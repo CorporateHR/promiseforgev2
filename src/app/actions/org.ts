@@ -1,6 +1,8 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { sendEmail, tenantAdminAssignedHtml } from '@/lib/email'
 import { revalidatePath } from 'next/cache'
 
 export async function createOrganization(orgName: string, description: string) {
@@ -137,5 +139,27 @@ export async function assignTenantAdmin(employeeEmail: string, orgId: string) {
     p_org_id: orgId,
   })
   if (error) return { error: error.message }
+
+  // Notify the newly-assigned tenant admin — fire-and-forget, doesn't block the response.
+  // Uses the admin client because `profiles` RLS only allows reading your own row.
+  ;(async () => {
+    try {
+      const admin = createAdminClient()
+      const [{ data: org }, { data: profile }] = await Promise.all([
+        supabase.from('organizations').select('name').eq('id', orgId).single(),
+        admin.from('profiles').select('full_name').eq('email', employeeEmail).single(),
+      ])
+      const orgName = org?.name ?? 'your organization'
+      await sendEmail(
+        employeeEmail,
+        profile?.full_name ?? '',
+        `You're now a Tenant Admin of ${orgName}`,
+        tenantAdminAssignedHtml(profile?.full_name ?? '', orgName),
+      )
+    } catch (err) {
+      console.error('[Assign Tenant Admin] Email failed:', err)
+    }
+  })()
+
   return { success: true }
 }

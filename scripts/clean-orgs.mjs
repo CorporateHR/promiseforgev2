@@ -17,6 +17,8 @@
  *
  * Tables purged (in FK-safe order):
  *   challenge_completions → challenge_tiers → employee_allocations
+ *   → employee_budget_transactions → manager_budget_transactions
+ *   → marketplace_redemptions → org_budget_transactions → marketplace_items
  *   → manager_budgets → org_budgets → challenges → employees
  *   → org_level_configs → profiles (org-scoped) → auth users → organizations
  *
@@ -89,14 +91,20 @@ async function deleteRows(table, column, ids, label) {
   if (!ids.length) { console.log(`  ${DIM}${label}: nothing to delete${RESET}`); return 0 }
   if (DRY_RUN)     { console.log(`  ${DIM}[dry-run] would delete from ${table} where ${column} in (${ids.length} id(s))${RESET}`); return ids.length }
 
-  const { error, count } = await supabase
-    .from(table)
-    .delete({ count: 'exact' })
-    .in(column, ids)
+  const CHUNK = 200 // keep request URI under server limits
+  let total = 0
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK)
+    const { error, count } = await supabase
+      .from(table)
+      .delete({ count: 'exact' })
+      .in(column, chunk)
 
-  if (error) throw new Error(`Failed deleting ${table}: ${error.message}`)
-  console.log(`  ${GREEN}✓${RESET}  ${label}: deleted ${count ?? '?'} row(s)`)
-  return count ?? 0
+    if (error) throw new Error(`Failed deleting ${table}: ${error.message}`)
+    total += count ?? 0
+  }
+  console.log(`  ${GREEN}✓${RESET}  ${label}: deleted ${total} row(s)`)
+  return total
 }
 
 // Paginate through a select query and collect all IDs (bypasses 1000-row cap)
@@ -195,6 +203,15 @@ async function main() {
 
   // employee_allocations → org
   await deleteRows('employee_allocations', 'organization_id', orgIds, 'Employee allocations')
+
+  // budget/marketplace transaction tables → org (reference employees/profiles, must go before those)
+  await deleteRows('employee_budget_transactions', 'organization_id', orgIds, 'Employee budget transactions')
+  await deleteRows('manager_budget_transactions', 'organization_id', orgIds, 'Manager budget transactions')
+  await deleteRows('marketplace_redemptions', 'org_id', orgIds, 'Marketplace redemptions')
+  await deleteRows('org_budget_transactions', 'organization_id', orgIds, 'Org budget transactions')
+
+  // marketplace_items → org (references profiles via created_by, must go before profiles)
+  await deleteRows('marketplace_items', 'org_id', orgIds, 'Marketplace items')
 
   // manager_budgets → org
   await deleteRows('manager_budgets', 'organization_id', orgIds, 'Manager budgets')

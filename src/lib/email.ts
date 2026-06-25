@@ -46,27 +46,27 @@ function shell(content: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Promise Forge</title>
 </head>
-<body style="margin:0;padding:0;background:#0f0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f0f12;padding:40px 0;">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;padding:40px 0;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
           <!-- Header -->
           <tr>
-            <td style="background:#18181b;border-radius:12px 12px 0 0;padding:28px 40px;border-bottom:1px solid #27272a;">
-              <span style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Promise<span style="color:#6366f1;">Forge</span></span>
+            <td style="background:#ffffff;border-radius:12px 12px 0 0;padding:28px 40px;border-bottom:1px solid #e4e4e7;">
+              <span style="font-size:18px;font-weight:700;color:#18181b;letter-spacing:-0.3px;">Promise<span style="color:#6366f1;">Forge</span></span>
             </td>
           </tr>
           <!-- Body -->
           <tr>
-            <td style="background:#18181b;padding:36px 40px;">
+            <td style="background:#ffffff;padding:36px 40px;">
               ${content}
             </td>
           </tr>
           <!-- Footer -->
           <tr>
-            <td style="background:#18181b;border-radius:0 0 12px 12px;padding:20px 40px;border-top:1px solid #27272a;">
-              <p style="margin:0;font-size:12px;color:#52525b;text-align:center;">
+            <td style="background:#ffffff;border-radius:0 0 12px 12px;padding:20px 40px;border-top:1px solid #e4e4e7;">
+              <p style="margin:0;font-size:12px;color:#71717a;text-align:center;">
                 This email was sent by Promise Forge. If you have questions, contact your administrator.
               </p>
             </td>
@@ -88,26 +88,26 @@ function pill(text: string, color = '#6366f1'): string {
 }
 
 function h1(text: string): string {
-  return `<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#f4f4f5;letter-spacing:-0.4px;">${text}</h1>`
+  return `<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#18181b;letter-spacing:-0.4px;">${text}</h1>`
 }
 
 function p(text: string): string {
-  return `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#a1a1aa;">${text}</p>`
+  return `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#52525b;">${text}</p>`
 }
 
 function meta(label: string, value: string): string {
   return `<tr>
     <td style="padding:8px 0;font-size:13px;color:#71717a;width:120px;vertical-align:top;">${label}</td>
-    <td style="padding:8px 0;font-size:13px;color:#e4e4e7;font-weight:500;vertical-align:top;">${value}</td>
+    <td style="padding:8px 0;font-size:13px;color:#18181b;font-weight:500;vertical-align:top;">${value}</td>
   </tr>`
 }
 
 function metaTable(rows: string): string {
-  return `<table cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:20px 0;border-radius:8px;background:#0f0f12;padding:4px 16px;">${rows}</table>`
+  return `<table cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:20px 0;border-radius:8px;background:#f4f4f5;padding:4px 16px;">${rows}</table>`
 }
 
 function divider(): string {
-  return `<hr style="border:none;border-top:1px solid #27272a;margin:24px 0;">`
+  return `<hr style="border:none;border-top:1px solid #e4e4e7;margin:24px 0;">`
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────────
@@ -187,6 +187,89 @@ export function challengeCompleteHtml(
   `)
 }
 
+export function orgBudgetSetHtml(
+  adminName: string,
+  orgName: string,
+  amount: number,
+  newTotal: number,
+): string {
+  const increased = amount >= 0
+  return shell(`
+    <div style="margin-bottom:20px;">${pill(increased ? 'Budget Increased' : 'Budget Decreased', increased ? '#22c55e' : '#ef4444')}</div>
+    ${h1(`${orgName}'s token budget was updated`)}
+    ${p(`Hi ${adminName}, a super admin has just ${increased ? 'added tokens to' : 'reduced'} your organization's token budget.`)}
+    ${divider()}
+    ${metaTable(`
+      ${meta('Organization', orgName)}
+      ${meta('Change', `${increased ? '+' : ''}${amount.toLocaleString()} tokens`)}
+      ${meta('New total', newTotal.toLocaleString() + ' tokens')}
+    `)}
+    ${divider()}
+    ${p('You can allocate this budget to managers from your admin dashboard.')}
+    ${btn('Go to Dashboard', `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/dashboard/admin/budget`)}
+  `)
+}
+
+export function managerBudgetSetHtml(
+  managerName: string,
+  orgName: string,
+  amount: number,
+  newTotal: number,
+): string {
+  const increased = amount >= 0
+  return shell(`
+    <div style="margin-bottom:20px;">${pill(increased ? 'Budget Increased' : 'Budget Decreased', increased ? '#22c55e' : '#ef4444')}</div>
+    ${h1(`Your token budget was updated`)}
+    ${p(`Hi ${managerName}, your tenant admin at ${orgName} has just ${increased ? 'added tokens to' : 'reduced'} your token budget.`)}
+    ${divider()}
+    ${metaTable(`
+      ${meta('Organization', orgName)}
+      ${meta('Change', `${increased ? '+' : ''}${amount.toLocaleString()} tokens`)}
+      ${meta('New total', newTotal.toLocaleString() + ' tokens')}
+    `)}
+    ${divider()}
+    ${p('You can allocate this budget to your direct reports from your manager dashboard.')}
+    ${btn('Go to Dashboard', `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/dashboard/manager`)}
+  `)
+}
+
+export function employeeBudgetSetHtml(
+  employeeName: string,
+  managerName: string,
+  amount: number,
+  newTotal: number,
+): string {
+  const increased = amount >= 0
+  return shell(`
+    <div style="margin-bottom:20px;">${pill(increased ? 'Budget Increased' : 'Budget Decreased', increased ? '#22c55e' : '#ef4444')}</div>
+    ${h1(`Your token budget was updated`)}
+    ${p(`Hi ${employeeName}, your manager ${managerName} has just ${increased ? 'added tokens to' : 'reduced'} your token budget.`)}
+    ${divider()}
+    ${metaTable(`
+      ${meta('Manager', managerName)}
+      ${meta('Change', `${increased ? '+' : ''}${amount.toLocaleString()} tokens`)}
+      ${meta('New total', newTotal.toLocaleString() + ' tokens')}
+    `)}
+    ${divider()}
+    ${p('You can spend these tokens in the marketplace from your employee dashboard.')}
+    ${btn('Go to Dashboard', `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/dashboard/employee`)}
+  `)
+}
+
+export function tenantAdminAssignedHtml(
+  employeeName: string,
+  orgName: string,
+): string {
+  return shell(`
+    <div style="margin-bottom:20px;">${pill('Role Updated', '#6366f1')}</div>
+    ${h1(`You're now a Tenant Admin of ${orgName}`)}
+    ${p(`Hi ${employeeName}, a super admin has just made you a Tenant Admin for ${orgName}. You now have access to manage challenges, budgets, employees, and the marketplace for your organization.`)}
+    ${divider()}
+    ${p('Log in to your dashboard to get started.')}
+    ${btn('Go to Dashboard', `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/dashboard`)}
+  `)
+}
+
 export function redemptionRequestedHtml(
   adminName: string,
   employeeName: string,
@@ -229,6 +312,21 @@ export function redemptionApprovedHtml(
   `)
 }
 
+export function employeeInviteHtml(
+  employeeName: string,
+  orgName: string,
+  activationLink: string,
+): string {
+  return shell(`
+    <div style="margin-bottom:20px;">${pill('Welcome', '#6366f1')}</div>
+    ${h1(`You've been invited to join ${orgName}`)}
+    ${p(`Hi ${employeeName}, your organization has set up a Promise Forge account for you. Activate it and choose a password to get started.`)}
+    ${divider()}
+    ${p('This link is unique to you and expires after first use — set a password and you\'re in.')}
+    ${btn('Activate My Account', activationLink)}
+  `)
+}
+
 export function redemptionRejectedHtml(
   employeeName: string,
   itemName: string,
@@ -237,7 +335,7 @@ export function redemptionRejectedHtml(
   return shell(`
     <div style="margin-bottom:20px;">${pill('Not Approved', '#ef4444')}</div>
     ${h1('Your redemption was not approved')}
-    ${p(`Hi ${employeeName}, unfortunately your redemption request for <strong style="color:#e4e4e7;">${itemName}</strong> was not approved at this time.`)}
+    ${p(`Hi ${employeeName}, unfortunately your redemption request for <strong style="color:#18181b;">${itemName}</strong> was not approved at this time.`)}
     ${divider()}
     ${metaTable(`
       ${meta('Item', itemName)}

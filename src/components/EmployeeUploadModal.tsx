@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { Upload, X, Download, CheckCircle, AlertCircle, Loader2, FileText, List, GitFork } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { inviteEmployees, type InviteResult } from '@/app/actions/invite'
 import OrgChartView from './OrgChartView'
 import type { Employee, OrgLevelConfig } from '@/lib/types'
 
@@ -41,6 +42,7 @@ type ResolvedEntry = { uuid: string; level: number }
 interface ImportResult {
   imported: Employee[]
   failedRows: { row: ParsedRow; reason: string }[]
+  invite: InviteResult | null
 }
 
 // ─── Build a preview Employee[] from parsed rows + existing employees ─────────
@@ -373,7 +375,15 @@ export default function EmployeeUploadModal({ employees, levelConfigs, orgId, on
       failedRows.push({ row, reason: `Manager "${row.manager_employee_id}" not found. Make sure they exist in the system or earlier in the same CSV.` })
     }
 
-    setResult({ imported, failedRows })
+    let invite: InviteResult | null = null
+    const inviteRecipients = imported
+      .filter((emp): emp is Employee & { email: string } => !!emp.email)
+      .map(emp => ({ email: emp.email, full_name: emp.full_name }))
+    if (inviteRecipients.length > 0) {
+      invite = await inviteEmployees(orgId, inviteRecipients)
+    }
+
+    setResult({ imported, failedRows, invite })
     setImporting(false)
     if (imported.length > 0) onImported(imported)
   }
@@ -591,7 +601,20 @@ export default function EmployeeUploadModal({ employees, levelConfigs, orgId, on
                     <div className="text-xs text-gray-500 mt-1">Failed</div>
                   </div>
                 )}
+                {result.invite && (
+                  <div className="text-center">
+                    <div className="text-4xl font-black text-indigo-500">{result.invite.invited}</div>
+                    <div className="text-xs text-gray-500 mt-1">Invited</div>
+                  </div>
+                )}
               </div>
+
+              {result.invite && (result.invite.skipped > 0 || result.invite.failed.length > 0) && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-lg px-3 py-2">
+                  {result.invite.skipped > 0 && <>{result.invite.skipped} already had an account and {result.invite.skipped !== 1 ? 'were' : 'was'} skipped. </>}
+                  {result.invite.failed.length > 0 && <>{result.invite.failed.length} invite email{result.invite.failed.length !== 1 ? 's' : ''} failed to send.</>}
+                </div>
+              )}
 
               {result.failedRows.length > 0 && (
                 <div className="border border-red-200 rounded-xl overflow-hidden">
@@ -630,7 +653,7 @@ export default function EmployeeUploadModal({ employees, levelConfigs, orgId, on
             {!hasRows && !result && 'Upload a CSV — level is automatically derived from the manager chain.'}
             {hasRows && !importing && !result && `${validCount} of ${rows.length} rows ready to import`}
             {importing && 'Please wait…'}
-            {result && `${result.imported.length} employee${result.imported.length !== 1 ? 's' : ''} added successfully.`}
+            {result && `${result.imported.length} employee${result.imported.length !== 1 ? 's' : ''} added successfully.${result.invite ? ` ${result.invite.invited} invite${result.invite.invited !== 1 ? 's' : ''} sent.` : ''}`}
           </p>
           <div className="flex items-center gap-2">
             {!importing && (
