@@ -80,7 +80,7 @@ function shell(content: string): string {
 }
 
 function btn(text: string, href: string): string {
-  return `<a href="${href}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#6366f1;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;letter-spacing:0.1px;">${text}</a>`
+  return `<a href="${href.replace(/&/g, '&amp;')}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#6366f1;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;letter-spacing:0.1px;">${text}</a>`
 }
 
 function pill(text: string, color = '#6366f1'): string {
