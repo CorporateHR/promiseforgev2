@@ -209,7 +209,7 @@ export default function EmployeeChallengeDetail({
   const myCompletion = allCompletions.find(
     c => c.challenge_id === challenge.id && c.employee_id === employee.id,
   )
-  const isCompleted = !!myCompletion
+  const isCompleted = liveCompletedIds ? liveCompletedIds.has(employee.id) : !!myCompletion
 
   const sortedTiers = [...challenge.tiers].sort((a, b) => a.level - b.level)
   const individualTier = sortedTiers.find(t => t.is_individual)
