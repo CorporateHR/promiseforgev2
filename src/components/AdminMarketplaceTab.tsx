@@ -36,8 +36,6 @@ function ItemForm({
   const [description, setDescription] = useState(initial?.description ?? '')
   const [category, setCategory] = useState(initial?.category ?? '')
   const [tokenPrice, setTokenPrice] = useState(String(initial?.token_price ?? ''))
-  const [hasLimit, setHasLimit] = useState(initial?.quantity_limit != null)
-  const [quantityLimit, setQuantityLimit] = useState(String(initial?.quantity_limit ?? ''))
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,7 +46,7 @@ function ItemForm({
       description: description || undefined,
       category: category || undefined,
       token_price: price,
-      quantity_limit: hasLimit && quantityLimit ? parseInt(quantityLimit) : null,
+      quantity_limit: null,
     })
   }
 
@@ -100,28 +98,6 @@ function ItemForm({
             required
           />
         </div>
-      </div>
-
-      <div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={hasLimit}
-            onChange={e => setHasLimit(e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-xs font-bold text-gray-600">Set stock limit</span>
-        </label>
-        {hasLimit && (
-          <input
-            type="number"
-            min={1}
-            value={quantityLimit}
-            onChange={e => setQuantityLimit(e.target.value)}
-            placeholder="Max redemptions allowed"
-            className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
-          />
-        )}
       </div>
 
       {error && (
