@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
-import { ShoppingBag, Plus, Pencil, Check, X, Package, Clock, ChevronDown } from 'lucide-react'
+import { ShoppingBag, Plus, Check, X, Package, Clock, ChevronDown } from 'lucide-react'
 import type { MarketplaceItem, MarketplaceRedemption } from '@/lib/types'
 import {
   getMarketplaceItems,
@@ -435,12 +435,6 @@ export default function AdminMarketplaceTab({ orgId }: { orgId: string }) {
                               }`}
                             >
                               {item.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button
-                              onClick={() => { setEditItem(item); setFormError(null) }}
-                              className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
-                            >
-                              <Pencil size={12} />
                             </button>
                           </div>
                         </div>
