@@ -386,10 +386,12 @@ function StackedBar({
 export default function BudgetTab({
   orgId, employees, levelConfigs, totalBudget, initialAllocations, initialTransactions, orgChallenges,
 }: Props) {
-  // Org-wide challenges (manager_id null) that haven't ended reserve from the org budget
+  // Org-wide challenges (manager_id null) reserve from the org budget while draft/active,
+  // and stay reserved once completed (100% completion = worst-case budget fully paid out).
+  // Only 'disabled' challenges currently free their budget back (partial completion, no real settlement yet).
   const challengeReserved = useMemo(
     () => orgChallenges
-      .filter(c => !c.manager_id && (c.status === 'draft' || c.status === 'active'))
+      .filter(c => !c.manager_id && (c.status === 'draft' || c.status === 'active' || c.status === 'completed'))
       .reduce((s, c) => s + c.token_budget, 0),
     [orgChallenges],
   )
@@ -536,11 +538,12 @@ export default function BudgetTab({
 
     // Org-wide challenges (manager_id null)
     for (const c of orgChallenges.filter(ch => !ch.manager_id)) {
+      const isSettled = c.status === 'disabled'
       entries.push({
-        kind: (c.status === 'completed' || c.status === 'disabled') ? 'settled' as const : 'debit' as const,
-        date: (c.status === 'completed' || c.status === 'disabled') ? (c.updated_at ?? c.created_at) : c.created_at,
+        kind: isSettled ? 'settled' as const : 'debit' as const,
+        date: isSettled ? (c.updated_at ?? c.created_at) : c.created_at,
         label: c.title,
-        sub: (c.status === 'completed' || c.status === 'disabled') ? 'Challenge ended · tokens settled' : `Org-wide challenge · ${c.status}`,
+        sub: isSettled ? 'Challenge ended · tokens settled' : `Org-wide challenge · ${c.status}`,
         amount: c.token_budget,
       })
     }

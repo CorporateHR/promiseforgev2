@@ -279,7 +279,7 @@ export default function ChallengesTab({
     if (totalBudget === null) return 0
     const managerUsed = initialManagerBudgets.reduce((s, b) => s + b.tokens, 0)
     const challengeUsed = challenges
-      .filter(c => c.status === 'draft' || c.status === 'active')
+      .filter(c => c.status === 'draft' || c.status === 'active' || c.status === 'completed')
       .reduce((s, c) => s + c.token_budget, 0)
     return Math.max(0, totalBudget - managerUsed - challengeUsed)
   }, [totalBudget, initialManagerBudgets, challenges])

@@ -121,7 +121,7 @@ export default function ManagerBudgetTab({
 
   const challengeReserved = useMemo(
     () => myChallenges
-      .filter(c => c.status === 'draft' || c.status === 'active')
+      .filter(c => c.status === 'draft' || c.status === 'active' || c.status === 'completed')
       .reduce((s, c) => s + c.token_budget, 0),
     [myChallenges],
   )
@@ -190,11 +190,12 @@ export default function ManagerBudgetTab({
     }
 
     for (const c of myChallenges) {
+      const isSettled = c.status === 'disabled'
       entries.push({
-        kind: (c.status === 'completed' || c.status === 'disabled') ? 'settled' : 'debit',
-        date: (c.status === 'completed' || c.status === 'disabled') ? (c.updated_at ?? c.created_at) : c.created_at,
+        kind: isSettled ? 'settled' : 'debit',
+        date: isSettled ? (c.updated_at ?? c.created_at) : c.created_at,
         label: c.title,
-        sub: (c.status === 'completed' || c.status === 'disabled') ? 'Challenge ended · tokens settled' : `Challenge ${c.status} · reserved`,
+        sub: isSettled ? 'Challenge ended · tokens settled' : `Challenge ${c.status} · reserved`,
         amount: c.token_budget,
       })
     }

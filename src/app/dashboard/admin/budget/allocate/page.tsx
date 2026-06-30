@@ -37,7 +37,7 @@ export default async function AdminBudgetAllocatePage() {
   if (!totalBudget) redirect('/dashboard/admin/budget')
 
   const challengeReserved = ((challengesRaw ?? []) as any[])
-    .filter((c: any) => !c.manager_id && (c.status === 'draft' || c.status === 'active'))
+    .filter((c: any) => !c.manager_id && (c.status === 'draft' || c.status === 'active' || c.status === 'completed'))
     .reduce((s: number, c: any) => s + c.token_budget, 0)
 
   return (

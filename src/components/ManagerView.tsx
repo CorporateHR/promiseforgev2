@@ -1175,7 +1175,7 @@ function ManagerChallengesTab({
 
   const managerChallengesReserved = useMemo(
     () => localChallenges
-      .filter(c => c.manager_id === employee.id && (c.status === 'draft' || c.status === 'active'))
+      .filter(c => c.manager_id === employee.id && (c.status === 'draft' || c.status === 'active' || c.status === 'completed'))
       .reduce((s, c) => s + c.token_budget, 0),
     [localChallenges, employee.id],
   )

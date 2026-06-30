@@ -393,9 +393,10 @@ export default function OrgDetailView({
   const activeChallenges = initialChallenges.filter(c => c.status === 'active')
   const draftChallenges  = initialChallenges.filter(c => c.status === 'draft')
   const endedChallenges  = initialChallenges.filter(c => c.status === 'completed' || c.status === 'disabled')
-  // Active + draft challenges have tokens reserved (completed/disabled ones are settled)
+  // Active + draft + completed challenges keep tokens reserved (100% completion = full budget paid out).
+  // Only disabled ones are settled/freed back (partial completion, no real settlement step yet).
   const challengeReserved = initialChallenges
-    .filter(c => c.status === 'draft' || c.status === 'active')
+    .filter(c => c.status === 'draft' || c.status === 'active' || c.status === 'completed')
     .reduce((s, c) => s + c.token_budget, 0)
   const totalConsumed = managerAllocated + challengeReserved
   const remaining = budget !== null ? budget - totalConsumed : null
