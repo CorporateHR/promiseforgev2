@@ -50,8 +50,10 @@ async function getCallerEmployee(supabase: Awaited<ReturnType<typeof createClien
 }
 
 // Returns available tokens for org-wide challenges.
-// available = org_budget − manager_allocations − org-wide challenge reservations (non-ended)
+// available = org_budget − manager_allocations − org-wide challenge reservations (draft/active/completed)
 // Manager-scoped challenges are funded from manager_budgets, not counted here.
+// 'completed' stays reserved because it only happens at 100% completion, where the
+// worst-case token_budget equals the actual payout — nothing to free back.
 async function computeAvailable(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
@@ -68,7 +70,7 @@ async function computeAvailable(
       .select('id, token_budget')
       .eq('organization_id', orgId)
       .is('manager_id', null)
-      .in('status', ['draft', 'active']),
+      .in('status', ['draft', 'active', 'completed']),
   ])
 
   const total = orgBudget?.total_tokens ?? 0
@@ -81,7 +83,9 @@ async function computeAvailable(
 }
 
 // Returns available tokens from a manager's budget for new manager-scoped challenges.
-// available = manager_budget − existing manager-scoped challenge reservations (non-ended)
+// available = manager_budget − existing manager-scoped challenge reservations (draft/active/completed)
+// 'completed' stays reserved because it only happens at 100% completion, where the
+// worst-case token_budget equals the actual payout — nothing to free back.
 async function computeManagerAvailable(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
@@ -97,7 +101,7 @@ async function computeManagerAvailable(
       .select('id, token_budget')
       .eq('organization_id', orgId)
       .eq('manager_id', managerId)
-      .in('status', ['draft', 'active']),
+      .in('status', ['draft', 'active', 'completed']),
   ])
 
   const total = managerBudget?.tokens ?? 0
